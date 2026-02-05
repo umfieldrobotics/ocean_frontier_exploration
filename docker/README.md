@@ -1,4 +1,11 @@
-# Entended from the below template. this container builds isaacsim, installs oceansim, moves it to your bind directory for persistance, and installs ros2. Access the sim binaries via YOUR_WORK_DIR/built_isaacsim. Follow the below steps for inital workdir setup.
+Entended from the below template. This container:
+- builds isaacsim
+- installs oceansim
+- moves the sim to your bind directory for persistance
+- installs ros2
+
+Access the sim binaries via YOUR_WORK_DIR/built_isaacsim and launch as usual.
+Follow the below steps for inital workdir setup.
 
 
 # Docker Template
