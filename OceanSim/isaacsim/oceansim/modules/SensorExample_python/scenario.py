@@ -6,6 +6,8 @@ from pxr import Gf, PhysxSchema
 from isaacsim.core.prims import SingleRigidPrim
 from isaacsim.core.utils.prims import get_prim_path
 
+# ROS2 integ
+from isaacsim.oceansim.sensors import ros2_helpers # move to utils
 
 class MHL_Sensor_Example_Scenario():
     def __init__(self):
@@ -14,35 +16,38 @@ class MHL_Sensor_Example_Scenario():
         self._cam = None
         self._DVL = None
         self._baro = None
+        #self._zed = None
 
         self._ctrl_mode = None
 
         self._running_scenario = False
         self._time = 0.0
-
-    def setup_scenario(self, rob, sonar, cam, DVL, baro, ctrl_mode):
+    #def setup_scenario(self, rob, sonar, cam, DVL, baro, zed,  ctrl_mode):
+    def setup_scenario(self, rob, sonar, cam, DVL, baro,  ctrl_mode):
         self._rob = rob
         self._sonar = sonar
         self._cam = cam
         self._DVL = DVL
         self._baro = baro
+        #self._zed = zed
         self._ctrl_mode = ctrl_mode
         if self._sonar is not None:
             self._sonar.sonar_initialize(include_unlabelled=True)
-        # if self._cam is not None:   # code changed for stereo camera
-        #     self._cam.initialize()
-        if self._cam is not None:  # code added changed for stereo camera
-            print("CAM INIT:", self._cam)
-            if isinstance(self._cam, tuple) or isinstance(self._cam, list):
-                for c in self._cam:
-                    c.initialize()
-            else:
-                self._cam.initialize()
-
+        if self._cam is not None:
+            self._cam.initialize()
+            approx_freq = 30
+            #info has type mismatch when calling read_camera_info Stage.GetPrimAtPath(Stage, NoneType) did not match C++ signature:
+            ros2_helpers.publish_camera_info( self._cam, approx_freq)
+            #ros2_helpers.publish_rgb( self._cam, approx_freq)
+            ros2_helpers.publish_depth( self._cam, approx_freq)
+            ros2_helpers.publish_pointcloud_from_depth( self._cam, approx_freq)
+            ros2_helpers.publish_camera_tf( self._cam)
         if self._DVL is not None:
             self._DVL_reading = [0.0, 0.0, 0.0]
         if self._baro is not None:
             self._baro_reading = 101325.0 # atmospheric pressure (Pa)
+        # if self._zed is not None:
+        #     self._zed.initalize()
         
         
         # Apply the physx force schema if manual control
@@ -117,16 +122,8 @@ class MHL_Sensor_Example_Scenario():
         # close() will detach annotator from render product and clear the cache.
         if self._sonar is not None:
             self._sonar.close()
-        # if self._cam is not None: # code changed for stereo camera
-        #     self._cam.close()
-        
-        if self._cam is not None:  # code changed for stereo camera
-            if isinstance(self._cam, tuple) or isinstance(self._cam, list):
-                for c in self._cam:
-                    c.close()
-            else:
-                self._cam.close()
-
+        if self._cam is not None:
+            self._cam.close()
 
         # clear the keyboard subscription
         if self._ctrl_mode=="Manual control":
@@ -138,6 +135,7 @@ class MHL_Sensor_Example_Scenario():
         self._cam = None
         self._DVL = None
         self._baro = None
+       # self._zed = None
         self._running_scenario = False
         self._time = 0.0
 
@@ -152,22 +150,14 @@ class MHL_Sensor_Example_Scenario():
         
         if self._sonar is not None:
             self._sonar.make_sonar_data()
-        # if self._cam is not None:     # code changed for stereo camera
-        #     self._cam.render()
-        if isinstance(self._cam, (list, tuple)):
-            for i, c in enumerate(self._cam):
-                print(f"RENDERING[{i}] name={c._name} prim={c._prim_path}")
-                c.render()
-        else:
-            print(f"RENDERING MONO name={self._cam._name} prim={self._cam._prim_path}")
+        if self._cam is not None:
             self._cam.render()
-
-
-
         if self._DVL is not None:
             self._DVL_reading = self._DVL.get_linear_vel()
         if self._baro is not None:
             self._baro_reading = self._baro.get_pressure()
+        # if self._zed is not None:
+        #     self._zed.render()
 
         if self._ctrl_mode=="Manual control":
             force_cmd = Gf.Vec3f(*self._force_cmd._base_command)
