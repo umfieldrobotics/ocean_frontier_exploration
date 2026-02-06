@@ -320,8 +320,8 @@ class UIBuilder():
         
 
         if self._use_sonar:
-            from isaacsim.oceansim.sensors.ImagingSonarSensor import ImagingSonarSensor
-            self._sonar = ImagingSonarSensor(prim_path=robot_prim_path + '/sonar',
+            from isaacsim.oceansim.sensors.ImagingSonarSensor_ROS import ImagingSonarSensor_ROS
+            self._sonar = ImagingSonarSensor_ROS(prim_path=robot_prim_path + '/sonar',
                                             translation=self._sonar_trans,
                                             orientation=euler_angles_to_quat(np.array([0.0, 45, 0.0]),  degrees=True),
                                             range_res=0.005,
