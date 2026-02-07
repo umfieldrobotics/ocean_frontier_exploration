@@ -257,6 +257,7 @@ class OmniHandler():
     def __init__(self):
         self._rgb_node = None
         self._sonar_node = None
+        self._imu_node = None
         self._name = "Oceansim"
         self._setup_ros_graph()
         
@@ -271,17 +272,23 @@ class OmniHandler():
                 if pd := omni.usd.get_context().get_stage().GetPrimAtPath(graph_path):
                     omni.kit.commands.execute("DeletePrims", paths=[graph_path])
                 # https://docs.isaacsim.omniverse.nvidia.com/5.1.0/py/source/extensions/isaacsim.ros2.bridge/docs/ogn/OgnROS2PublishImage.html
-                (self._og_graph, [rgb_pub_node, sonar_pub_node, _], _, _) = og.Controller.edit(
+                (self._og_graph, [rgb_pub_node, sonar_pub_node, imu_pub_node, _], _, _) = og.Controller.edit(
                     {"graph_path": graph_path, "evaluator_name": "execution"},
                     {
                         keys.CREATE_NODES: [
                             ("uw_rgb_publisher", "isaacsim.ros2.bridge.ROS2PublishImage"),
                             ("multibeam_sonar_publisher", "isaacsim.ros2.bridge.ROS2PublishImage"),
-                            ("on_tick", "omni.graph.action.OnTick") 
+                            ("imu_publisher", "isaacsim.ros2.bridge.ROS2PublishImu"),
+                            ("on_tick", "omni.graph.action.OnTick") ,
+                            #("imu_read", "isaacsim.sensors.physics.IsaacReadIMU") 
                         ],
                         keys.CONNECT: [
                             ("on_tick.outputs:tick", "uw_rgb_publisher.inputs:execIn"),
-                            ("on_tick.outputs:tick", "multibeam_sonar_publisher.inputs:execIn")
+                            ("on_tick.outputs:tick", "multibeam_sonar_publisher.inputs:execIn"),
+                            ("on_tick.outputs:tick", "imu_publisher.inputs:execIn")
+                        #    ("imu_read.outputs:angularVelocity", "imu_publisher.inputs:angularVelocity"),
+                        #    ("imu_read.outputs:linearAcceleration", "imu_publisher.inputs:linearAcceleration"),
+                        #    ("imu_read.outputs:orientation", "imu_publisher.inputs:orientation"),
                         ],
                         keys.SET_VALUES: [
                             ("uw_rgb_publisher.inputs:topicName", f"{self._name}/rgb"),
@@ -291,11 +298,15 @@ class OmniHandler():
                             ("multibeam_sonar_publisher.inputs:topicName", f"{self._name}/sonar_image"),
                             ("multibeam_sonar_publisher.inputs:frameId", self._name),
                             ("multibeam_sonar_publisher.inputs:encoding", "rgba8"), #switch back to rgb8 if not working
+
+                            ("imu_publisher.inputs:topicName", f"{self._name}/imu"),
+                            ("imu_publisher.inputs:frameId", self._name),                           
                         ]
                     }
                 )
                 self._rgb_node = rgb_pub_node
                 self._sonar_node = sonar_pub_node
+                self._imu_node = imu_pub_node
                 print(f"[{self._name}] Internal ROS 2 Bridge Graph initialized at {graph_path}")
                 
             except Exception as e:

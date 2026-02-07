@@ -124,6 +124,15 @@ class UIBuilder():
         self.frames.append(sensor_choosing_frame)
         with sensor_choosing_frame:
             with ui.VStack(style=get_style(), spacing=5, height=0):
+
+                sonar_check_box = CheckBox(
+                    "Imu",
+                    default_value=False,
+                    tooltip=" Click this checkbox to activate Imu",
+                    on_click_fn=self._on_imu_checkbox_click_fn,
+                )
+                self._use_imu = False
+
                 sonar_check_box = CheckBox(
                     "Imaging Sonar",
                     default_value=False,
@@ -241,6 +250,7 @@ class UIBuilder():
         self._rob_linear_damping = 10.0
 
         # Sensor
+        self._imu = None
         self._sonar = None
         self._sonar_trans = np.array([0.3,0.0, 0.3])
         self._cam = None
@@ -317,7 +327,17 @@ class UIBuilder():
                         translation=np.array([-2.0, 0.0, -0.8]))
 
         set_camera_view(eye=np.array([5,0.6,0.4]), target=rob_collider_prim.get_world_pose()[0])
-        
+       
+
+        if self._use_imu:
+            from isaacsim.oceansim.sensors.ImuSensor_ROS import ImuSensor_ROS
+            # from isaacsim.sensors.physics import IMUSensor
+            self._imu = ImuSensor_ROS(
+                    prim_path=robot_prim_path + '/imu',
+                    name="Imu",
+                    frequency=60,
+                    translation=np.array([0, 0, 0]),
+                )
 
         if self._use_sonar:
             from isaacsim.oceansim.sensors.ImagingSonarSensor_ROS import ImagingSonarSensor_ROS
@@ -384,7 +404,7 @@ class UIBuilder():
         self._scenario.teardown_scenario()
         #self._scenario.setup_scenario(self._rob, self._sonar, self._cam, self._DVL, self._baro, self._zed, self._ctrl_mode)
 
-        self._scenario.setup_scenario(self._rob, self._sonar, self._cam, self._DVL, self._baro, self._ctrl_mode)
+        self._scenario.setup_scenario(self._imu, self._rob, self._sonar, self._cam, self._DVL, self._baro, self._ctrl_mode)
     def _on_post_reset_btn(self):
         """
         This function is attached to the Reset Button as the post_reset_fn callback.
@@ -449,6 +469,9 @@ class UIBuilder():
         self._scenario_state_btn.enabled = False
         self._reset_btn.enabled = False
 
+    def _on_imu_checkbox_click_fn(self, model):
+        self._use_imu = model
+        print('Reload the scene for changes to take effect.')
 
     def _on_sonar_checkbox_click_fn(self, model):
         self._use_sonar = model

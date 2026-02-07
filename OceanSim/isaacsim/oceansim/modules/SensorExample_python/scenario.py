@@ -12,6 +12,7 @@ from isaacsim.oceansim.sensors import ros2_helpers # move to utils
 class MHL_Sensor_Example_Scenario():
     def __init__(self):
         self._rob = None
+        self._imu = None
         self._sonar = None
         self._cam = None
         self._DVL = None
@@ -23,9 +24,10 @@ class MHL_Sensor_Example_Scenario():
         self._running_scenario = False
         self._time = 0.0
     #def setup_scenario(self, rob, sonar, cam, DVL, baro, zed,  ctrl_mode):
-    def setup_scenario(self, rob, sonar, cam, DVL, baro,  ctrl_mode):
+    def setup_scenario(self, imu, rob, sonar, cam, DVL, baro,  ctrl_mode):
         #Initialize omni graph before dependant sensors
         self.omni_ros = ros2_helpers.OmniHandler()
+        self._imu = imu
         self._rob = rob
         self._sonar = sonar
         self._cam = cam
@@ -33,17 +35,28 @@ class MHL_Sensor_Example_Scenario():
         self._baro = baro
         #self._zed = zed
         self._ctrl_mode = ctrl_mode
+
+        # NOTE: cannot use manual control along with IMU
+        if self._imu is not None:
+            self._imu.initialize(og_node=self.omni_ros._imu_node)
+
         if self._sonar is not None:
+            approx_freq = 30
             self._sonar.sonar_initialize(include_unlabelled=True,og_node=self.omni_ros._sonar_node)
+            ros2_helpers.publish_camera_info( self._sonar, approx_freq)
+            #ros2_helpers.publish_rgb( self._cam, approx_freq)
+            ros2_helpers.publish_depth( self._sonar, approx_freq)
+            ros2_helpers.publish_pointcloud_from_depth( self._sonar, approx_freq)
+            ros2_helpers.publish_camera_tf( self._sonar)
         if self._cam is not None:
             self._cam.initialize(og_node=self.omni_ros._rgb_node)
             approx_freq = 30
-            #info has type mismatch when calling read_camera_info Stage.GetPrimAtPath(Stage, NoneType) did not match C++ signature:
-            ros2_helpers.publish_camera_info( self._cam, approx_freq)
-            #ros2_helpers.publish_rgb( self._cam, approx_freq)
-            ros2_helpers.publish_depth( self._cam, approx_freq)
-            ros2_helpers.publish_pointcloud_from_depth( self._cam, approx_freq)
-            ros2_helpers.publish_camera_tf( self._cam)
+            # #info has type mismatch when calling read_camera_info Stage.GetPrimAtPath(Stage, NoneType) did not match C++ signature:
+            # ros2_helpers.publish_camera_info( self._cam, approx_freq)
+            # #ros2_helpers.publish_rgb( self._cam, approx_freq)
+            # ros2_helpers.publish_depth( self._cam, approx_freq)
+            # ros2_helpers.publish_pointcloud_from_depth( self._cam, approx_freq)
+            # ros2_helpers.publish_camera_tf( self._cam)
         if self._DVL is not None:
             self._DVL_reading = [0.0, 0.0, 0.0]
         if self._baro is not None:
@@ -122,6 +135,8 @@ class MHL_Sensor_Example_Scenario():
 
         # Because these two sensors create annotator cache in GPU,
         # close() will detach annotator from render product and clear the cache.
+        if self._imu is not None: # TODO do better than derefing
+            self._imu = None
         if self._sonar is not None:
             self._sonar.close()
         if self._cam is not None:
@@ -149,7 +164,8 @@ class MHL_Sensor_Example_Scenario():
             return
         
         self._time += step
-        
+        if self._imu is not None:
+            self._imu.read()
         if self._sonar is not None:
             self._sonar.make_sonar_data()
         if self._cam is not None:
