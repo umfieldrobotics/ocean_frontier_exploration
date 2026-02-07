@@ -152,47 +152,10 @@ class ImagingSonarSensor_ROS(Camera):
         # Only horizontal fov is displayed correctly while the vertical fov is
         # followed by your viewport aspect ratio settings.
 
-        #ROS omni graph  init
-        self._setup_ros_graph()
+        #ROS omni graph node
+        self._og_node = None
 
-
-    # ROS integ
-    def _setup_ros_graph(self):
-        """Creates a standalone OmniGraph to drive the internal C++ ROS Bridge."""
-        try:
-            keys = og.Controller.Keys
-            graph_path = f"/UW_Publisher_{self._name}"
-            
-        
-            if pd := omni.usd.get_context().get_stage().GetPrimAtPath(graph_path):
-                omni.kit.commands.execute("DeletePrims", paths=[graph_path])
-            # https://docs.isaacsim.omniverse.nvidia.com/5.1.0/py/source/extensions/isaacsim.ros2.bridge/docs/ogn/OgnROS2PublishImage.html
-            (self._og_graph, [pub_node, _], _, _) = og.Controller.edit(
-                {"graph_path": graph_path, "evaluator_name": "execution"},
-                {
-                    keys.CREATE_NODES: [
-                        ("ros_publisher", "isaacsim.ros2.bridge.ROS2PublishImage"),
-                        ("on_tick", "omni.graph.action.OnTick") 
-                    ],
-                    keys.CONNECT: [
-                        ("on_tick.outputs:tick", "ros_publisher.inputs:execIn")
-                    ],
-                    keys.SET_VALUES: [
-                        ("ros_publisher.inputs:topicName", f"{self._name}/songaar_bw_image"),
-                        ("ros_publisher.inputs:frameId", self._name),
-                        ("ros_publisher.inputs:encoding", "rgba8"), #switch back to rgb8 if not working
-                        #  ("ros_publisher.inputs:width", self._res[0]),
-                        #  ("ros_publisher.inputs:height", self._res[1]),
-                    ]
-                }
-            )
-            self._og_node = pub_node
-            print(f"[{self._name}] Internal ROS 2 Bridge Graph initialized at {graph_path}")
-            
-        except Exception as e:
-            carb.log_error(f"[{self._name}] Failed to setup ROS Graph: {e}")
-
-
+   
     # Initialize the sensor so that annotator is 
     # loaded on cuda and ready to acquire data
     # Data is generated per simulation tick
@@ -208,7 +171,9 @@ class ImagingSonarSensor_ROS(Camera):
     
 
     # Cont sonar config
-    def sonar_initialize(self, output_dir : str = None, viewport: bool = True, include_unlabelled = False, if_array_copy: bool = True):
+    def sonar_initialize(self, output_dir : str = None, viewport: bool = True, include_unlabelled = False, 
+    if_array_copy: bool = True,og_node=None):
+        
         """Initialize sonar data processing pipeline and annotators.
     
         Args:
@@ -275,6 +240,9 @@ class ImagingSonarSensor_ROS(Camera):
         self.sonar_image.zero_()
         self.range_dependent_ray_noise.zero_()
         self.gau_noise.zero_()
+
+        #ROS omni graph node 
+        self._og_node = og_node
 
         
 

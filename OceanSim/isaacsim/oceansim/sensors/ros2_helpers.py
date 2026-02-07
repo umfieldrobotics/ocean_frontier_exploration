@@ -23,10 +23,12 @@ from isaacsim.sensors.camera import Camera
 from isaacsim.core.utils.prims import is_prim_path_valid
 from isaacsim.core.nodes.scripts.utils import set_target_prims
 
-# # ROS2 bridge extension
-# from isaacsim.core.utils.extensions import enable_extension
-# enable_extension("isaacsim.ros2.bridge")
-
+# ROS2 bridge extension
+from isaacsim.core.utils.extensions import enable_extension
+enable_extension("isaacsim.ros2.bridge")
+import carb
+# Import OmniGraph Controller
+import omni.graph.core as og 
 # #opencv
 # from cv_bridge import CvBridge
 # bridge = CvBridge()
@@ -138,7 +140,7 @@ def publish_depth(camera: Camera, freq):
     return
 
 
-
+# Not currently using this for the UW camera, see the omnigraph node in UW_Camera_Stereo instead
 def publish_rgb(camera: Camera, freq):
     # The following code will link the camera's render product and publish the data to the specified topic name.
     render_product = camera._render_product_path
@@ -191,7 +193,7 @@ def publish_camera_tf(camera: Camera):
         if not is_prim_path_valid(ros_camera_graph_path):
             (ros_camera_graph, _, _, _) = og.Controller.edit(
                 {
-                    "graph_path": ros_camera_graph_path,
+                    "graph_path": ros_camera_graph_path, 
                     "evaluator_name": "execution",
                     "pipeline_stage": og.GraphPipelineStage.GRAPH_PIPELINE_STAGE_SIMULATION,
                 },
@@ -249,3 +251,52 @@ def publish_camera_tf(camera: Camera):
     )
     return
 ###################################################################
+
+#Omnigraph setup
+class OmniHandler():
+    def __init__(self):
+        self._rgb_node = None
+        self._sonar_node = None
+        self._name = "Oceansim"
+        self._setup_ros_graph()
+        
+
+    def _setup_ros_graph(self):
+            """Creates a standalone OmniGraph to drive the internal C++ ROS Bridge."""
+            try:
+                keys = og.Controller.Keys
+                graph_path = f"/UW_Publisher_{self._name}"
+                
+            
+                if pd := omni.usd.get_context().get_stage().GetPrimAtPath(graph_path):
+                    omni.kit.commands.execute("DeletePrims", paths=[graph_path])
+                # https://docs.isaacsim.omniverse.nvidia.com/5.1.0/py/source/extensions/isaacsim.ros2.bridge/docs/ogn/OgnROS2PublishImage.html
+                (self._og_graph, [rgb_pub_node, sonar_pub_node, _], _, _) = og.Controller.edit(
+                    {"graph_path": graph_path, "evaluator_name": "execution"},
+                    {
+                        keys.CREATE_NODES: [
+                            ("uw_rgb_publisher", "isaacsim.ros2.bridge.ROS2PublishImage"),
+                            ("multibeam_sonar_publisher", "isaacsim.ros2.bridge.ROS2PublishImage"),
+                            ("on_tick", "omni.graph.action.OnTick") 
+                        ],
+                        keys.CONNECT: [
+                            ("on_tick.outputs:tick", "uw_rgb_publisher.inputs:execIn"),
+                            ("on_tick.outputs:tick", "multibeam_sonar_publisher.inputs:execIn")
+                        ],
+                        keys.SET_VALUES: [
+                            ("uw_rgb_publisher.inputs:topicName", f"{self._name}/rgb"),
+                            ("uw_rgb_publisher.inputs:frameId", self._name),
+                            ("uw_rgb_publisher.inputs:encoding", "rgba8"), #switch back to rgb8 if not working
+                           
+                            ("multibeam_sonar_publisher.inputs:topicName", f"{self._name}/sonar_image"),
+                            ("multibeam_sonar_publisher.inputs:frameId", self._name),
+                            ("multibeam_sonar_publisher.inputs:encoding", "rgba8"), #switch back to rgb8 if not working
+                        ]
+                    }
+                )
+                self._rgb_node = rgb_pub_node
+                self._sonar_node = sonar_pub_node
+                print(f"[{self._name}] Internal ROS 2 Bridge Graph initialized at {graph_path}")
+                
+            except Exception as e:
+                carb.log_error(f"[{self._name}] Failed to setup ROS Graph: {e}")

@@ -24,6 +24,8 @@ class MHL_Sensor_Example_Scenario():
         self._time = 0.0
     #def setup_scenario(self, rob, sonar, cam, DVL, baro, zed,  ctrl_mode):
     def setup_scenario(self, rob, sonar, cam, DVL, baro,  ctrl_mode):
+        #Initialize omni graph before dependant sensors
+        self.omni_ros = ros2_helpers.OmniHandler()
         self._rob = rob
         self._sonar = sonar
         self._cam = cam
@@ -32,9 +34,9 @@ class MHL_Sensor_Example_Scenario():
         #self._zed = zed
         self._ctrl_mode = ctrl_mode
         if self._sonar is not None:
-            self._sonar.sonar_initialize(include_unlabelled=True)
+            self._sonar.sonar_initialize(include_unlabelled=True,og_node=self.omni_ros._sonar_node)
         if self._cam is not None:
-            self._cam.initialize()
+            self._cam.initialize(og_node=self.omni_ros._rgb_node)
             approx_freq = 30
             #info has type mismatch when calling read_camera_info Stage.GetPrimAtPath(Stage, NoneType) did not match C++ signature:
             ros2_helpers.publish_camera_info( self._cam, approx_freq)

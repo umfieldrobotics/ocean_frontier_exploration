@@ -18,8 +18,8 @@ from isaacsim.oceansim.utils.UWrenderer_utils import UW_render
 # Import OmniGraph Controller
 import omni.graph.core as og 
 # ROS2 bridge extension
-from isaacsim.core.utils.extensions import enable_extension
-enable_extension("isaacsim.ros2.bridge")
+# from isaacsim.core.utils.extensions import enable_extension
+# enable_extension("isaacsim.ros2.bridge")
 #from isaacsim.oceansim.sensors.ros2_helpers # move to utils
 #import ros2_helpers
 
@@ -79,6 +79,7 @@ class UW_Camera_Stereo(Camera):
         self._res = resolution
         self._writing = False
         self._uw_frame = None
+        self._og_node = None
 
         super().__init__(prim_path, name, frequency, dt, resolution, position, orientation, translation, render_product_path)
 
@@ -87,7 +88,8 @@ class UW_Camera_Stereo(Camera):
                    viewport: bool = True,
                    writing_dir: str = None,
                    UW_yaml_path: str = None,
-                   physics_sim_view=None):
+                   physics_sim_view=None,
+                   og_node=None):
         
         """Configure underwater rendering properties and initialize pipelines.
     
@@ -103,6 +105,7 @@ class UW_Camera_Stereo(Camera):
             physics_sim_view (_type_, optional): _description_. Defaults to None.            
     
         """
+        self._og_node = og_node
         self._id = 0
         self._viewport = viewport
         self._device = wp.get_preferred_device()
@@ -141,7 +144,6 @@ class UW_Camera_Stereo(Camera):
     #     atten_coeff=list(self._atten_coeff),
     #     backscatter_coeff=list(self._backscatter_coeff)
     # )
-        self._setup_ros_graph()
         
        
 
@@ -155,40 +157,6 @@ class UW_Camera_Stereo(Camera):
         
         print(f'[{self._name}] Initialized successfully. Data writing: {self._writing}')
 
-    def _setup_ros_graph(self):
-        """Creates a standalone OmniGraph to drive the internal C++ ROS Bridge."""
-        try:
-            keys = og.Controller.Keys
-            graph_path = f"/UW_Publisher_{self._name}"
-            
-        
-            if pd := omni.usd.get_context().get_stage().GetPrimAtPath(graph_path):
-                omni.kit.commands.execute("DeletePrims", paths=[graph_path])
-            # https://docs.isaacsim.omniverse.nvidia.com/5.1.0/py/source/extensions/isaacsim.ros2.bridge/docs/ogn/OgnROS2PublishImage.html
-            (self._og_graph, [pub_node, _], _, _) = og.Controller.edit(
-                {"graph_path": graph_path, "evaluator_name": "execution"},
-                {
-                    keys.CREATE_NODES: [
-                        ("ros_publisher", "isaacsim.ros2.bridge.ROS2PublishImage"),
-                        ("on_tick", "omni.graph.action.OnTick") 
-                    ],
-                    keys.CONNECT: [
-                        ("on_tick.outputs:tick", "ros_publisher.inputs:execIn")
-                    ],
-                    keys.SET_VALUES: [
-                        ("ros_publisher.inputs:topicName", f"{self._name}/rgb"),
-                        ("ros_publisher.inputs:frameId", self._name),
-                        ("ros_publisher.inputs:encoding", "rgba8"), #switch back to rgb8 if not working
-                         ("ros_publisher.inputs:width", self._res[0]),
-                         ("ros_publisher.inputs:height", self._res[1]),
-                    ]
-                }
-            )
-            self._og_node = pub_node
-            print(f"[{self._name}] Internal ROS 2 Bridge Graph initialized at {graph_path}")
-            
-        except Exception as e:
-            carb.log_error(f"[{self._name}] Failed to setup ROS Graph: {e}")
     
     def render(self):
         """Process and display a single frame with underwater effects.
@@ -233,7 +201,9 @@ class UW_Camera_Stereo(Camera):
                 # og.Controller.attribute(self._og_node.get_attribute("inputs:width")).set(self._uw_frame.shape[0])
                 # og.Controller.attribute(self._og_node.get_attribute("inputs:height")).set(self._uw_frame.shape[1])
                 sim_time = omni.timeline.get_timeline_interface().get_current_time()
-                og.Controller.attribute(self._og_node.get_attribute("inputs:timeStamp")).set(sim_time)
+        
+                og.Controller.attribute(self._og_node.get_attribute("inputs:width")).set(self._res[0])
+                og.Controller.attribute(self._og_node.get_attribute("inputs:height")).set(self._res[1])
                 og.Controller.attribute(self._og_node.get_attribute("inputs:data")).set(self._uw_frame)
 
             if self._viewport:
