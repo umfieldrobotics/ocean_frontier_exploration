@@ -23,6 +23,9 @@ from .scenario import MHL_Sensor_Example_Scenario
 from .global_variables import EXTENSION_DESCRIPTION, EXTENSION_TITLE, EXTENSION_LINK
 from isaacsim.oceansim.utils.assets_utils import get_oceansim_assets_path
 
+# ROS2 integ
+from isaacsim.oceansim.sensors import ros2_helpers # move to utils
+
 class UIBuilder():
     def __init__(self):
 
@@ -121,6 +124,15 @@ class UIBuilder():
         self.frames.append(sensor_choosing_frame)
         with sensor_choosing_frame:
             with ui.VStack(style=get_style(), spacing=5, height=0):
+
+                sonar_check_box = CheckBox(
+                    "Imu",
+                    default_value=False,
+                    tooltip=" Click this checkbox to activate Imu",
+                    on_click_fn=self._on_imu_checkbox_click_fn,
+                )
+                self._use_imu = False
+
                 sonar_check_box = CheckBox(
                     "Imaging Sonar",
                     default_value=False,
@@ -154,7 +166,19 @@ class UIBuilder():
                     on_click_fn=self._on_baro_checkbox_click_fn
                 ) 
                 self._use_baro = False
+               
+                self._use_baro = False
                 self.wrapped_ui_elements.append(baro_check_box)
+
+                self.wrapped_ui_elements.append(baro_check_box)
+                # zed_stereo_check_box = CheckBox(
+                #     "ZED X Stereo",
+                #     default_value=False,
+                #     tooltip='Click this checkbox to activate ZED X',
+                #     on_click_fn=self._on_zed_checkbox_click_fn
+                # )
+                # self._use_zed = False
+                # self.wrapped_ui_elements.append(zed_stereo_check_box)
 
                 
         world_controls_frame = CollapsableFrame("World Controls", collapsed=False)
@@ -226,6 +250,7 @@ class UIBuilder():
         self._rob_linear_damping = 10.0
 
         # Sensor
+        self._imu = None
         self._sonar = None
         self._sonar_trans = np.array([0.3,0.0, 0.3])
         self._cam = None
@@ -302,57 +327,46 @@ class UIBuilder():
                         translation=np.array([-2.0, 0.0, -0.8]))
 
         set_camera_view(eye=np.array([5,0.6,0.4]), target=rob_collider_prim.get_world_pose()[0])
-        
+       
+
+        if self._use_imu:
+            from isaacsim.oceansim.sensors.ImuSensor_ROS import ImuSensor_ROS
+            # from isaacsim.sensors.physics import IMUSensor
+            self._imu = ImuSensor_ROS(
+                    prim_path=robot_prim_path + '/imu',
+                    name="Imu",
+                    frequency=60,
+                    translation=np.array([0, 0, 0]),
+                )
 
         if self._use_sonar:
-            from isaacsim.oceansim.sensors.ImagingSonarSensor import ImagingSonarSensor
-            self._sonar = ImagingSonarSensor(prim_path=robot_prim_path + '/sonar',
+            from isaacsim.oceansim.sensors.ImagingSonarSensor_ROS import ImagingSonarSensor_ROS
+            self._sonar = ImagingSonarSensor_ROS(prim_path=robot_prim_path + '/sonar',
                                             translation=self._sonar_trans,
                                             orientation=euler_angles_to_quat(np.array([0.0, 45, 0.0]),  degrees=True),
                                             range_res=0.005,
                                             angular_res=0.25,
                                             hori_res=4000
                                             )
-        
-        # the code in oceansim docs
-        
-        # if self._use_camera:
-        #     from isaacsim.oceansim.sensors.UW_Camera import UW_Camera
-
-        #     self._cam = UW_Camera(prim_path=robot_prim_path + '/UW_camera',
-        #                             resolution=[1920,1080],
-        #                             translation=self._cam_trans)
-        #     self._cam.set_focal_length(0.1 * self._cam_focal_length)
-        #     self._cam.set_clipping_range(0.1, 100) 
-        
-        # mycoede for stereo camera
+            
         if self._use_camera:
-            from isaacsim.oceansim.sensors.UW_Camera import UW_Camera
+            # TODO: make stereo seperate
+            from isaacsim.oceansim.sensors.UW_Camera_Stereo import UW_Camera_Stereo
 
-            baseline = 0.12  # meters (choose your baseline)
-
-            # left camera
-            self._cam_left = UW_Camera(
-                prim_path=robot_prim_path + "/UW_stereo/left",
-                resolution=[1920, 1080],
-                translation=self._cam_trans + np.array([0.0, -baseline/2, 0.0]),
-            )
-            self._cam_left.set_focal_length(0.1 * self._cam_focal_length)
-            self._cam_left.set_clipping_range(0.1, 100)
-
-            # right camera
-            self._cam_right = UW_Camera(
-                prim_path=robot_prim_path + "/UW_stereo/right",
-                resolution=[1920, 1080],
-                translation=self._cam_trans + np.array([0.0, +baseline/2, 0.0]),
-            )
-            self._cam_right.set_focal_length(0.1 * self._cam_focal_length)
-            self._cam_right.set_clipping_range(0.1, 100)
-
-            # keep a convenient handle if other code expects self._cam
-            self._cam = (self._cam_left, self._cam_right)
-
-                    
+            self._cam = UW_Camera_Stereo(prim_path=robot_prim_path + '/UW_camera',
+                                    resolution=[1920,1080],
+                                    translation=self._cam_trans)
+            self._cam.set_focal_length(0.1 * self._cam_focal_length)
+            self._cam.set_clipping_range(0.1, 100)
+            # MOVED TO SCENERIO, MUST RUN AFTER initialize function call Call publishers
+            # approx_freq = 30
+            # #info has type mismatch when calling read_camera_info Stage.GetPrimAtPath(Stage, NoneType) did not match C++ signature:
+            # #ros2_helpers.publish_camera_info( self._cam, approx_freq)
+            # ros2_helpers.publish_rgb( self._cam, approx_freq)
+            # #ros2_helpers.publish_depth( self._cam, approx_freq)
+            # ros2_helpers.publish_pointcloud_from_depth( self._cam, approx_freq)
+            # ros2_helpers.publish_camera_tf( self._cam)
+            
         if self._use_DVL:
             from isaacsim.oceansim.sensors.DVLsensor import DVLsensor
 
@@ -366,6 +380,9 @@ class UIBuilder():
 
             self._baro = BarometerSensor(prim_path=robot_prim_path + '/Baro',
                                         water_surface_z=self._water_surface)
+        # if self._use_zed:
+        #     from isaacsim.simulation_app.utils.
+            
             
 
 
@@ -385,7 +402,9 @@ class UIBuilder():
 
     def _reset_scenario(self):
         self._scenario.teardown_scenario()
-        self._scenario.setup_scenario(self._rob, self._sonar, self._cam, self._DVL, self._baro, self._ctrl_mode)
+        #self._scenario.setup_scenario(self._rob, self._sonar, self._cam, self._DVL, self._baro, self._zed, self._ctrl_mode)
+
+        self._scenario.setup_scenario(self._imu, self._rob, self._sonar, self._cam, self._DVL, self._baro, self._ctrl_mode)
     def _on_post_reset_btn(self):
         """
         This function is attached to the Reset Button as the post_reset_fn callback.
@@ -450,6 +469,9 @@ class UIBuilder():
         self._scenario_state_btn.enabled = False
         self._reset_btn.enabled = False
 
+    def _on_imu_checkbox_click_fn(self, model):
+        self._use_imu = model
+        print('Reload the scene for changes to take effect.')
 
     def _on_sonar_checkbox_click_fn(self, model):
         self._use_sonar = model
@@ -466,6 +488,10 @@ class UIBuilder():
     def _on_baro_checkbox_click_fn(self, model):
         self._use_baro = model
         print('Reload the scene for changes to take effect.')
+   
+    # def _on_zed_checkbox_click_fn(self, model):
+    #     self._use_zed = model
+    #     print('Reload the scene for changes to take effect.')
     
     def _on_manual_ctrl_cb_click_fn(self, model):
         self._manual_ctrl = model
