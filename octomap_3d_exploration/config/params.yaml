@@ -1,0 +1,26 @@
+octomap_builder:
+  ros__parameters:
+    # Map parameters
+    resolution: 0.2           # Voxel size in meters (underwater: larger voxels)
+    max_range: 20.0           # Maximum sensor range (meters)
+    min_range: 0.5            # Minimum sensor range (meters)
+    frame_id: "UW_camera_world"  # ← CHANGE THIS to match your camera frame
+    robot_frame: "base_link"  # Robot base frame
+    
+    # Update rates
+    publish_rate: 2.0         # Hz - how often to publish map
+    
+    # Octree parameters
+    max_depth: 44           # Maximum octree depth
+    
+    # Probabilistic parameters
+    prob_hit: 0.9             # Probability of occupancy on hit
+    prob_miss: 0.2            # Probability of free on miss
+    occupancy_threshold: 0.5  # Threshold for occupied
+    clamping_threshold_min: 0.01  # Min probability
+    clamping_threshold_max: 0.99   # Max probability
+    
+    # Visualization
+    visualize_free_space: true      # Show free voxels
+    visualize_unknown_space: false  # Show unknown voxels
+    visualization_decimation: 1    # Show every Nth free voxel
