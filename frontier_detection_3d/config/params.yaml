@@ -1,0 +1,24 @@
+frontier_detector:
+  ros__parameters:
+    # Detection rate
+    detection_rate: 1.0           # Hz - how often to detect frontiers
+    
+    # Frontier filtering
+    min_frontier_size: 5.0        # Minimum voxels in a frontier cluster
+    
+    # Clustering
+    cluster_radius: 1.0           # Meters - group frontiers within this radius
+    
+    # Information gain
+    information_radius: 2.0       # Meters - cube size for counting unknown voxels
+    
+    # Best frontier selection
+    lambda_distance: 0.1          # Distance cost weight (higher = prefer closer)
+    
+    # Coordinate frames
+    map_frame: "UW_camera_world"  # Map frame
+    robot_frame: "base_link"      # Robot frame
+    
+    # Multi-resolution
+    refinement_depth: 14          # Octree depth for frontier detection
+                                  # Lower = coarser/faster, Higher = finer/slower
