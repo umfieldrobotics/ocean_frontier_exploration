@@ -1,0 +1,18 @@
+path_controller:
+  ros__parameters:
+    # Coordinate frames
+    map_frame: "UW_camera_world"
+    robot_frame: "UW_camera"
+
+    # Control parameters
+    control_frequency: 10.0            # Hz
+    waypoint_tolerance: 0.5            # meters - distance to consider waypoint reached
+    goal_tolerance: 0.3                # meters - distance to consider goal reached
+
+    # Velocity limits
+    max_linear_velocity: 1.0           # m/s - maximum linear speed
+    max_angular_velocity: 0.5          # rad/s - maximum angular speed
+
+    # Controller gains
+    k_linear: 0.5                      # Linear velocity proportional gain
+    k_angular: 1.0                     # Angular velocity proportional gain

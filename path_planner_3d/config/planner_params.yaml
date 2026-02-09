@@ -1,0 +1,12 @@
+path_planner:
+  ros__parameters:
+    # Coordinate frames
+    map_frame: "UW_camera_world"
+    robot_frame: "UW_camera"
+
+    # Planning parameters
+    planning_timeout: 5.0              # seconds
+    collision_check_resolution: 0.2    # meters - resolution for collision checking
+    robot_radius: 0.5                  # meters - safety radius around robot
+    max_planning_range: 50.0           # meters - maximum distance to plan
+    use_rrt_star: true                 # Use RRT* (true) or basic RRT (false)

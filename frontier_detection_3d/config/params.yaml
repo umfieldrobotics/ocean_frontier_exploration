@@ -4,7 +4,7 @@ frontier_detector:
     detection_rate: 1.0           # Hz - how often to detect frontiers
     
     # Frontier filtering
-    min_frontier_size: 5.0        # Minimum voxels in a frontier cluster
+    min_frontier_size: 3.0        # Minimum voxels in a frontier cluster
     
     # Clustering
     cluster_radius: 1.0           # Meters - group frontiers within this radius

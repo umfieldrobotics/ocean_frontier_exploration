@@ -94,10 +94,12 @@ bool OctomapBuilder::transformPointCloud(
 {
   try {
     // Get transform from cloud frame to map frame
+    // Use Time(0) to get the latest available transform instead of the point cloud timestamp
+    // This avoids extrapolation errors when point cloud timestamps are slightly delayed
     transform = tf_buffer_->lookupTransform(
       frame_id_,
       cloud_in->header.frame_id,
-      cloud_in->header.stamp,
+      rclcpp::Time(0),
       rclcpp::Duration::from_seconds(0.1));
 
     // Convert ROS PointCloud2 to PCL
