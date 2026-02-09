@@ -68,10 +68,11 @@ private:
   std::string map_frame_;
   std::string robot_frame_;
   double planning_timeout_;
-  double collision_check_resolution_;
+  double grid_resolution_;        // Grid cell size for A* (meters)
   double robot_radius_;
   double max_planning_range_;
-  bool use_rrt_star_;
+  double heuristic_weight_;       // A* heuristic weight (1.0 = A*, >1.0 = weighted A*)
+  int max_expansions_;            // Maximum node expansions before timeout
 
   // State
   geometry_msgs::msg::PoseStamped current_goal_;

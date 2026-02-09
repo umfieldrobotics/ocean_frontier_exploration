@@ -1,11 +1,11 @@
 # Path Planner 3D
 
-3D path planning and control for autonomous underwater exploration using RRT* algorithm.
+3D path planning and control for autonomous underwater exploration using A* algorithm.
 
 ## Overview
 
 This package provides:
-1. **PathPlanner Node** - Plans collision-free 3D paths using RRT* algorithm
+1. **PathPlanner Node** - Plans collision-free 3D paths using A* algorithm
 2. **PathController Node** - Follows planned paths with 6-DOF velocity control
 
 ## Architecture
@@ -14,7 +14,7 @@ This package provides:
 /exploration_goal (from frontier_detection_3d)
         ↓
    PathPlanner Node
-   - RRT* path planning
+   - A* path planning (3D grid search)
    - Collision checking with octomap
    - Path smoothing
         ↓
@@ -41,9 +41,10 @@ This package provides:
 
 **Parameters:** (see [config/planner_params.yaml](config/planner_params.yaml))
 - `planning_timeout`: 5.0s - Maximum time for path planning
-- `collision_check_resolution`: 0.2m - Resolution for collision checking
+- `grid_resolution`: 0.3m - Grid cell size for A* search
 - `robot_radius`: 0.5m - Safety radius around robot
-- `use_rrt_star`: true - Use RRT* (optimizes path cost)
+- `heuristic_weight`: 1.0 - A* heuristic weight (1.0 = optimal, >1.0 = faster)
+- `max_expansions`: 60000 - Maximum node expansions before timeout
 
 ### 2. PathController Node
 
@@ -130,21 +131,24 @@ Add these displays to visualize the navigation:
 
 ## Algorithm Details
 
-### RRT* Path Planning
+### A* Path Planning
 
-The planner uses **Rapidly-exploring Random Tree Star (RRT*)** algorithm:
+The planner uses **A\* (A-Star) grid-based search** algorithm:
 
-1. **Sampling:** Randomly samples 3D points in the planning space
-2. **Goal Bias:** 10% probability of sampling the goal to speed up convergence
-3. **Rewiring:** RRT* finds optimal parent nodes within a radius to minimize path cost
-4. **Collision Checking:** Validates path segments against octomap obstacles
+1. **Grid Discretization:** Converts continuous 3D space into voxel grid (0.3m resolution)
+2. **Heuristic Search:** Uses Euclidean distance heuristic to guide search toward goal
+3. **26-Connected Expansion:** Explores all 26 neighbors (face, edge, vertex) for smooth paths
+4. **Collision Checking:** Validates each grid cell against octomap obstacles
 5. **Path Smoothing:** Removes unnecessary waypoints using line-of-sight checks
 
 **Key Features:**
 - Plans in full 3D space (not limited to 2D plane)
 - Considers robot radius for safe clearance
-- Asymptotically optimal (finds better paths with more iterations)
+- **Guaranteed optimal** path on the discretized grid
+- Deterministic (same path every time)
+- Fast replanning (0.1-2 seconds typical)
 - Timeout protection (5 seconds default)
+- Configurable heuristic weight for speed vs optimality tradeoff
 
 ### Path Following Controller
 
@@ -166,8 +170,11 @@ v_z = k_linear * (target_z - robot_z)
 ### Planning Performance
 
 - **Increase `planning_timeout`** if paths aren't found in cluttered environments
-- **Decrease `collision_check_resolution`** for faster planning (less safe)
+- **Decrease `grid_resolution`** for faster planning but coarser paths (e.g., 0.5m)
+- **Increase `grid_resolution`** for smoother paths but slower planning (e.g., 0.2m)
+- **Increase `heuristic_weight`** (e.g., 1.5-2.0) for faster but suboptimal paths (Weighted A*)
 - **Increase `robot_radius`** for more conservative obstacle avoidance
+- **Increase `max_expansions`** if planning fails in complex environments
 
 ### Control Performance
 
@@ -211,9 +218,9 @@ v_z = k_linear * (target_z - robot_z)
 - **Solution:** Increase `waypoint_tolerance`
 
 ### Path goes through obstacles
-- **Cause:** `robot_radius` too small
+- **Cause:** `robot_radius` too small or `grid_resolution` too coarse
 - **Solution:** Increase `robot_radius` parameter
-- **Solution:** Decrease `collision_check_resolution` for more checks
+- **Solution:** Decrease `grid_resolution` for finer discretization
 
 ## File Structure
 
@@ -223,7 +230,7 @@ path_planner_3d/
 │   ├── path_planner.hpp        # PathPlanner node header
 │   └── path_controller.hpp     # PathController node header
 ├── src/
-│   ├── path_planner.cpp        # RRT* planning implementation
+│   ├── path_planner.cpp        # A* planning implementation
 │   └── path_controller.cpp     # 6-DOF controller implementation
 ├── launch/
 │   ├── path_planner.launch.py       # Launch planner only

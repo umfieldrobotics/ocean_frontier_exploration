@@ -1,21 +1,52 @@
 #include "path_planner_3d/path_planner.hpp"
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <cmath>
-#include <random>
 #include <algorithm>
+#include <queue>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace path_planner_3d
 {
 
-// RRT Node structure
-struct RRTNode
+// Grid index structure for 3D A*
+struct GridIndex
 {
-  Point3D position;
-  int parent_idx;
-  double cost;
+  int x, y, z;
 
-  RRTNode(const Point3D& pos, int parent = -1, double c = 0.0)
-    : position(pos), parent_idx(parent), cost(c) {}
+  GridIndex(int x_ = 0, int y_ = 0, int z_ = 0) : x(x_), y(y_), z(z_) {}
+
+  bool operator==(const GridIndex& other) const {
+    return x == other.x && y == other.y && z == other.z;
+  }
+
+  // Hash function for unordered_map
+  struct Hash {
+    std::size_t operator()(const GridIndex& idx) const {
+      return std::hash<int>()(idx.x) ^
+             (std::hash<int>()(idx.y) << 1) ^
+             (std::hash<int>()(idx.z) << 2);
+    }
+  };
+};
+
+// A* Node structure
+struct AStarNode
+{
+  GridIndex index;
+  Point3D position;
+  double g_cost;        // Cost from start
+  double h_cost;        // Heuristic cost to goal
+  double f_cost;        // Total cost (g + h)
+  GridIndex parent;
+
+  AStarNode(const GridIndex& idx, const Point3D& pos, double g, double h, const GridIndex& p)
+    : index(idx), position(pos), g_cost(g), h_cost(h), f_cost(g + h), parent(p) {}
+
+  // For priority queue (min-heap based on f_cost)
+  bool operator>(const AStarNode& other) const {
+    return f_cost > other.f_cost;
+  }
 };
 
 PathPlanner::PathPlanner()
@@ -27,19 +58,21 @@ PathPlanner::PathPlanner()
   this->declare_parameter("map_frame", "UW_camera_world");
   this->declare_parameter("robot_frame", "base_link");
   this->declare_parameter("planning_timeout", 5.0);
-  this->declare_parameter("collision_check_resolution", 0.2);
+  this->declare_parameter("grid_resolution", 0.3);
   this->declare_parameter("robot_radius", 0.5);
   this->declare_parameter("max_planning_range", 50.0);
-  this->declare_parameter("use_rrt_star", true);
+  this->declare_parameter("heuristic_weight", 1.0);
+  this->declare_parameter("max_expansions", 60000);
 
   // Get parameters
   map_frame_ = this->get_parameter("map_frame").as_string();
   robot_frame_ = this->get_parameter("robot_frame").as_string();
   planning_timeout_ = this->get_parameter("planning_timeout").as_double();
-  collision_check_resolution_ = this->get_parameter("collision_check_resolution").as_double();
+  grid_resolution_ = this->get_parameter("grid_resolution").as_double();
   robot_radius_ = this->get_parameter("robot_radius").as_double();
   max_planning_range_ = this->get_parameter("max_planning_range").as_double();
-  use_rrt_star_ = this->get_parameter("use_rrt_star").as_bool();
+  heuristic_weight_ = this->get_parameter("heuristic_weight").as_double();
+  max_expansions_ = this->get_parameter("max_expansions").as_int();
 
   // Initialize TF
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
@@ -58,11 +91,14 @@ PathPlanner::PathPlanner()
   path_pub_ = this->create_publisher<nav_msgs::msg::Path>("/planned_path", 10);
   path_vis_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/path_visualization", 10);
 
-  RCLCPP_INFO(this->get_logger(), "PathPlanner initialized");
+  RCLCPP_INFO(this->get_logger(), "PathPlanner initialized with A* algorithm");
   RCLCPP_INFO(this->get_logger(), "  Map frame: %s", map_frame_.c_str());
   RCLCPP_INFO(this->get_logger(), "  Robot frame: %s", robot_frame_.c_str());
   RCLCPP_INFO(this->get_logger(), "  Planning timeout: %.1f s", planning_timeout_);
+  RCLCPP_INFO(this->get_logger(), "  Grid resolution: %.2f m", grid_resolution_);
   RCLCPP_INFO(this->get_logger(), "  Robot radius: %.2f m", robot_radius_);
+  RCLCPP_INFO(this->get_logger(), "  Heuristic weight: %.1f", heuristic_weight_);
+  RCLCPP_INFO(this->get_logger(), "  Max expansions: %d", max_expansions_);
 }
 
 void PathPlanner::octomapCallback(const octomap_msgs::msg::Octomap::SharedPtr msg)
@@ -198,165 +234,157 @@ bool PathPlanner::planPath(const Point3D& start, const Point3D& goal, std::vecto
     return false;
   }
 
-  // RRT* parameters
-  const int max_iterations = 5000;
-  const double step_size = 1.0;  // meters
-  const double goal_tolerance = 0.5;  // meters
-  const double rewire_radius = 3.0;  // for RRT*
+  auto start_time = this->now();
+  RCLCPP_INFO(this->get_logger(), "Starting A* planning...");
 
-  // Initialize RRT
-  std::vector<RRTNode> tree;
-  tree.push_back(RRTNode(start, -1, 0.0));
-
-  // Random number generation
-  std::random_device rd;
-  std::mt19937 gen(rd());
-
-  // Get bounds from octomap
-  double min_x = start.x - max_planning_range_;
-  double max_x = start.x + max_planning_range_;
-  double min_y = start.y - max_planning_range_;
-  double max_y = start.y + max_planning_range_;
-  double min_z = start.z - max_planning_range_;
-  double max_z = start.z + max_planning_range_;
-
-  std::uniform_real_distribution<> dis_x(min_x, max_x);
-  std::uniform_real_distribution<> dis_y(min_y, max_y);
-  std::uniform_real_distribution<> dis_z(min_z, max_z);
-  std::uniform_real_distribution<> dis_goal(0.0, 1.0);
-
-  auto distance = [](const Point3D& a, const Point3D& b) {
-    return std::sqrt(std::pow(a.x - b.x, 2) + std::pow(a.y - b.y, 2) + std::pow(a.z - b.z, 2));
+  // Helper functions
+  auto worldToGrid = [this](const Point3D& point) -> GridIndex {
+    return GridIndex(
+      static_cast<int>(std::round(point.x / grid_resolution_)),
+      static_cast<int>(std::round(point.y / grid_resolution_)),
+      static_cast<int>(std::round(point.z / grid_resolution_)));
   };
 
-  int goal_idx = -1;
-  auto start_time = this->now();
+  auto gridToWorld = [this](const GridIndex& idx) -> Point3D {
+    return Point3D(
+      idx.x * grid_resolution_,
+      idx.y * grid_resolution_,
+      idx.z * grid_resolution_);
+  };
 
-  RCLCPP_INFO(this->get_logger(), "Starting RRT* planning...");
+  auto euclideanDistance = [](const Point3D& a, const Point3D& b) -> double {
+    return std::sqrt(
+      std::pow(a.x - b.x, 2) +
+      std::pow(a.y - b.y, 2) +
+      std::pow(a.z - b.z, 2));
+  };
 
-  for (int iter = 0; iter < max_iterations; ++iter) {
+  // Convert start and goal to grid coordinates
+  GridIndex start_idx = worldToGrid(start);
+  GridIndex goal_idx = worldToGrid(goal);
+  Point3D goal_pos = gridToWorld(goal_idx);
+
+  // Priority queue for open list (min-heap)
+  std::priority_queue<AStarNode, std::vector<AStarNode>, std::greater<AStarNode>> open_list;
+
+  // Maps to track costs and parents
+  std::unordered_map<GridIndex, double, GridIndex::Hash> g_costs;
+  std::unordered_map<GridIndex, GridIndex, GridIndex::Hash> parents;
+  std::unordered_set<GridIndex, GridIndex::Hash> closed_list;
+
+  // Initialize start node
+  double h_start = heuristic_weight_ * euclideanDistance(start, goal_pos);
+  open_list.push(AStarNode(start_idx, start, 0.0, h_start, start_idx));
+  g_costs[start_idx] = 0.0;
+  parents[start_idx] = start_idx;
+
+  // 26-connected 3D neighborhood
+  const std::vector<std::array<int, 3>> neighbors = {
+    // 6-connected (face neighbors)
+    {{1, 0, 0}}, {{-1, 0, 0}}, {{0, 1, 0}}, {{0, -1, 0}}, {{0, 0, 1}}, {{0, 0, -1}},
+    // 12 edge neighbors
+    {{1, 1, 0}}, {{1, -1, 0}}, {{-1, 1, 0}}, {{-1, -1, 0}},
+    {{1, 0, 1}}, {{1, 0, -1}}, {{-1, 0, 1}}, {{-1, 0, -1}},
+    {{0, 1, 1}}, {{0, 1, -1}}, {{0, -1, 1}}, {{0, -1, -1}},
+    // 8 vertex neighbors
+    {{1, 1, 1}}, {{1, 1, -1}}, {{1, -1, 1}}, {{1, -1, -1}},
+    {{-1, 1, 1}}, {{-1, 1, -1}}, {{-1, -1, 1}}, {{-1, -1, -1}}
+  };
+
+  int expansions = 0;
+  bool goal_found = false;
+
+  while (!open_list.empty() && expansions < max_expansions_) {
     // Check timeout
     if ((this->now() - start_time).seconds() > planning_timeout_) {
-      RCLCPP_WARN(this->get_logger(), "Planning timeout after %d iterations", iter);
+      RCLCPP_WARN(this->get_logger(), "Planning timeout after %d expansions", expansions);
       break;
     }
 
-    // Sample random point (with goal bias)
-    Point3D rand_point;
-    if (dis_goal(gen) < 0.1) {  // 10% goal bias
-      rand_point = goal;
-    } else {
-      rand_point = Point3D(dis_x(gen), dis_y(gen), dis_z(gen));
+    // Get node with lowest f-cost
+    AStarNode current = open_list.top();
+    open_list.pop();
+
+    // Skip if already processed
+    if (closed_list.count(current.index)) {
+      continue;
     }
 
-    // Find nearest node
-    int nearest_idx = 0;
-    double min_dist = distance(tree[0].position, rand_point);
-    for (size_t i = 1; i < tree.size(); ++i) {
-      double dist = distance(tree[i].position, rand_point);
-      if (dist < min_dist) {
-        min_dist = dist;
-        nearest_idx = i;
-      }
-    }
-
-    // Steer towards random point
-    Point3D nearest_pos = tree[nearest_idx].position;
-    Point3D direction;
-    direction.x = rand_point.x - nearest_pos.x;
-    direction.y = rand_point.y - nearest_pos.y;
-    direction.z = rand_point.z - nearest_pos.z;
-
-    double norm = distance(nearest_pos, rand_point);
-    if (norm > step_size) {
-      direction.x = (direction.x / norm) * step_size;
-      direction.y = (direction.y / norm) * step_size;
-      direction.z = (direction.z / norm) * step_size;
-    }
-
-    Point3D new_point(
-      nearest_pos.x + direction.x,
-      nearest_pos.y + direction.y,
-      nearest_pos.z + direction.z);
-
-    // Check if path to new point is valid
-    bool path_valid = true;
-    int num_checks = static_cast<int>(distance(nearest_pos, new_point) / collision_check_resolution_) + 1;
-    for (int i = 0; i <= num_checks; ++i) {
-      double t = static_cast<double>(i) / num_checks;
-      Point3D check_point(
-        nearest_pos.x + direction.x * t,
-        nearest_pos.y + direction.y * t,
-        nearest_pos.z + direction.z * t);
-
-      if (!isStateValid(check_point)) {
-        path_valid = false;
-        break;
-      }
-    }
-
-    if (!path_valid) continue;
-
-    // RRT*: Find best parent in neighborhood
-    int best_parent = nearest_idx;
-    double best_cost = tree[nearest_idx].cost + distance(nearest_pos, new_point);
-
-    if (use_rrt_star_) {
-      for (size_t i = 0; i < tree.size(); ++i) {
-        double dist = distance(tree[i].position, new_point);
-        if (dist < rewire_radius) {
-          double new_cost = tree[i].cost + dist;
-          if (new_cost < best_cost) {
-            // Check if path is collision-free
-            bool valid = true;
-            int checks = static_cast<int>(dist / collision_check_resolution_) + 1;
-            for (int j = 0; j <= checks; ++j) {
-              double t = static_cast<double>(j) / checks;
-              Point3D check(
-                tree[i].position.x + (new_point.x - tree[i].position.x) * t,
-                tree[i].position.y + (new_point.y - tree[i].position.y) * t,
-                tree[i].position.z + (new_point.z - tree[i].position.z) * t);
-              if (!isStateValid(check)) {
-                valid = false;
-                break;
-              }
-            }
-            if (valid) {
-              best_parent = i;
-              best_cost = new_cost;
-            }
-          }
-        }
-      }
-    }
-
-    // Add new node
-    int new_idx = tree.size();
-    tree.push_back(RRTNode(new_point, best_parent, best_cost));
+    // Mark as visited
+    closed_list.insert(current.index);
+    expansions++;
 
     // Check if goal reached
-    if (distance(new_point, goal) < goal_tolerance) {
-      goal_idx = new_idx;
-      RCLCPP_INFO(this->get_logger(), "Goal reached after %d iterations", iter);
+    if (current.index == goal_idx) {
+      goal_found = true;
+      RCLCPP_INFO(this->get_logger(), "Goal reached after %d expansions", expansions);
       break;
+    }
+
+    // Expand neighbors
+    for (const auto& offset : neighbors) {
+      GridIndex neighbor_idx(
+        current.index.x + offset[0],
+        current.index.y + offset[1],
+        current.index.z + offset[2]);
+
+      // Skip if already in closed list
+      if (closed_list.count(neighbor_idx)) {
+        continue;
+      }
+
+      // Convert to world coordinates
+      Point3D neighbor_pos = gridToWorld(neighbor_idx);
+
+      // Check if neighbor is valid (collision-free)
+      if (!isStateValid(neighbor_pos)) {
+        continue;
+      }
+
+      // Calculate movement cost
+      double move_cost = euclideanDistance(current.position, neighbor_pos);
+      double tentative_g = current.g_cost + move_cost;
+
+      // Check if this path to neighbor is better
+      if (g_costs.count(neighbor_idx) && tentative_g >= g_costs[neighbor_idx]) {
+        continue;
+      }
+
+      // Update cost and parent
+      g_costs[neighbor_idx] = tentative_g;
+      parents[neighbor_idx] = current.index;
+
+      // Calculate heuristic
+      double h_cost = heuristic_weight_ * euclideanDistance(neighbor_pos, goal_pos);
+
+      // Add to open list
+      open_list.push(AStarNode(neighbor_idx, neighbor_pos, tentative_g, h_cost, current.index));
     }
   }
 
-  // Extract path
-  if (goal_idx == -1) {
-    RCLCPP_WARN(this->get_logger(), "No path found to goal");
+  if (!goal_found) {
+    RCLCPP_WARN(this->get_logger(), "No path found to goal after %d expansions", expansions);
     return false;
   }
 
-  // Backtrack from goal to start
+  // Reconstruct path by backtracking from goal to start
   path.clear();
-  int current_idx = goal_idx;
-  while (current_idx != -1) {
-    path.push_back(tree[current_idx].position);
-    current_idx = tree[current_idx].parent_idx;
+  GridIndex current_idx = goal_idx;
+
+  while (!(current_idx == start_idx)) {
+    path.push_back(gridToWorld(current_idx));
+
+    if (!parents.count(current_idx)) {
+      RCLCPP_ERROR(this->get_logger(), "Path reconstruction failed - broken parent chain");
+      return false;
+    }
+
+    current_idx = parents[current_idx];
   }
 
-  // Reverse to get start-to-goal path
+  path.push_back(start);  // Add start position
+
+  // Reverse to get start-to-goal order
   std::reverse(path.begin(), path.end());
 
   return true;
@@ -383,7 +411,7 @@ void PathPlanner::smoothPath(std::vector<Point3D>& path)
         std::pow(path[j].y - path[i].y, 2) +
         std::pow(path[j].z - path[i].z, 2));
 
-      int num_checks = static_cast<int>(dist / collision_check_resolution_) + 1;
+      int num_checks = static_cast<int>(dist / grid_resolution_) + 1;
       for (int k = 0; k <= num_checks; ++k) {
         double t = static_cast<double>(k) / num_checks;
         Point3D check(
