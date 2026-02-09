@@ -3,7 +3,7 @@
 [![ROS2](https://img.shields.io/badge/ROS2-Jazzy-blue.svg)](https://docs.ros.org/en/jazzy/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Autonomous 3D frontier-based exploration system for underwater robotics using OctoMap, RRT* path planning, and 6-DOF control.
+Autonomous 3D frontier-based exploration system for underwater robotics using OctoMap, A* path planning, and 6-DOF control.
 
 ---
 
@@ -15,7 +15,7 @@ Autonomous 3D frontier-based exploration system for underwater robotics using Oc
 
 - 🗺️ **Real-time 3D Mapping** - Probabilistic occupancy grid mapping using OctoMap
 - 🎯 **Frontier Detection** - Identifies boundaries between explored and unexplored space  
-- 🛤️ **3D Path Planning** - RRT* algorithm for collision-free path generation
+- 🛤️ **3D Path Planning** - A* algorithm for collision-free path generation
 - 🎮 **6-DOF Control** - Full 3D velocity control for underwater navigation
 - 📊 **Multi-resolution Processing** - Efficient octree-based representation
 - 🎨 **RViz Visualization** - Real-time 3D visualization of maps, frontiers, and paths
@@ -55,7 +55,7 @@ Autonomous 3D frontier-based exploration system for underwater robotics using Oc
                          ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │              Package 3: path_planner_3d                          │
-│  • RRT* path planning in 3D                                     │
+│  • A* path planning in 3D (26-connected grid search)            │
 │  • Collision checking with octomap                              │
 │  • Path smoothing                                               │
 │  • Pure pursuit controller                                      │
@@ -119,10 +119,12 @@ Real-time 3D occupancy mapping from stereo camera point clouds.
 
 ### 3. **path_planner_3d**
 
-3D path planning and control using RRT* algorithm.
+3D path planning and control using A* algorithm.
 
 #### Features
-- RRT* path planning with collision checking
+- A* grid-based path planning with collision checking
+- 26-connected 3D neighborhood for smooth paths
+- Guaranteed optimal paths on discretized grid
 - Path smoothing
 - 6-DOF velocity control
 - Pure pursuit controller
@@ -257,8 +259,19 @@ clusters = cluster_by_distance(frontiers)
 score = gain × exp(-λ × distance)
 ```
 
-### RRT* Path Planning
-Sampling-based planning with rewiring for optimal paths.
+### A* Path Planning
+Grid-based search with 26-connected neighborhood:
+```python
+# Discretize 3D space into voxel grid
+grid_resolution = 0.3m
+
+# Expand all 26 neighbors (face, edge, vertex)
+for neighbor in 26_connected_neighbors:
+    f_cost = g_cost + euclidean_distance(neighbor, goal)
+
+# Guaranteed optimal path on discretized grid
+# Typical planning time: 0.1-2 seconds
+```
 
 ### Path Following
 Proportional controller:
@@ -314,7 +327,7 @@ ocean_frontier_exploration/
 ## 📚 References
 
 - **OctoMap:** Hornung et al., "OctoMap: An Efficient Probabilistic 3D Mapping Framework" (2013)
-- **RRT*:** Karaman and Frazzoli, "Sampling-based Algorithms for Optimal Motion Planning" (2011)
+- **A* Algorithm:** Hart, Nilsson, and Raphael, "A Formal Basis for the Heuristic Determination of Minimum Cost Paths" (1968)
 - **Frontier Exploration:** Yamauchi, "A Frontier-Based Approach for Autonomous Exploration" (1997)
 
 ---
