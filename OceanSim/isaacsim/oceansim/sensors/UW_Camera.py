@@ -128,10 +128,6 @@ class UW_Camera(Camera):
         """
         raw_rgba = self._rgba_annot.get_data()
         depth = self._depth_annot.get_data()
-
-        # added debugging print statements
-        print(f"[{self._prim_path}] rgba.size={raw_rgba.size} depth.size={depth.size}")
-
         if raw_rgba.size !=0:
             uw_image = wp.zeros_like(raw_rgba)
             wp.launch(
