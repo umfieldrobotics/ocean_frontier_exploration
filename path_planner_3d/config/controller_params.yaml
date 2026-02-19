@@ -2,7 +2,7 @@ path_controller:
   ros__parameters:
     # Coordinate frames
     map_frame: "UW_camera_world"
-    robot_frame: "UW_camera"
+    robot_frame: "UW_camera"           # FIXED: actual robot frame from TF tree
 
     # Control parameters
     control_frequency: 10.0            # Hz
@@ -10,9 +10,9 @@ path_controller:
     goal_tolerance: 0.3                # meters - distance to consider goal reached
 
     # Velocity limits
-    max_linear_velocity: 1.0           # m/s - maximum linear speed
-    max_angular_velocity: 0.5          # rad/s - maximum angular speed
+    max_linear_velocity: 0.4           # FIXED: reduced for safety (was 1.0)
+    max_angular_velocity: 0.3          # FIXED: reduced for safety (was 0.5)
 
     # Controller gains
-    k_linear: 0.5                      # Linear velocity proportional gain
-    k_angular: 1.0                     # Angular velocity proportional gain
+    k_linear: 0.3                      # FIXED: gentler control (was 0.5)
+    k_angular: 0.8                     # FIXED: gentler control (was 1.0)

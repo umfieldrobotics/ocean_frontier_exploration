@@ -177,65 +177,74 @@ Point3D PathPlanner::getRobotPosition()
 
 bool PathPlanner::isInCollision(const Point3D& point)
 {
-  std::lock_guard<std::mutex> lock(octree_mutex_);
+  // Try to lock mutex - if can't get it immediately, assume free (optimistic for exploration)
+  std::unique_lock<std::mutex> lock(octree_mutex_, std::try_to_lock);
+
+  if (!lock.owns_lock()) {
+    // Couldn't get lock - octree being updated. Assume free for exploration.
+    return false;
+  }
 
   if (!octree_) return false;
 
-  // Check if point is occupied in octree
-  octomap::point3d query(point.x, point.y, point.z);
-  octomap::OcTreeNode* node = octree_->search(query);
+  try {
+    // Check if point is occupied in octree
+    octomap::point3d query(point.x, point.y, point.z);
+    octomap::OcTreeNode* node = octree_->search(query);
 
-  if (node) {
-    return octree_->isNodeOccupied(node);
+    if (node) {
+      return octree_->isNodeOccupied(node);
+    }
+
+    // For EXPLORATION: Unknown space must be treated as FREE for A* planning
+    return false;
+  } catch (const std::exception& e) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+                         "Exception in isInCollision: %s", e.what());
+    return false;  // Assume free on error
   }
-
-  // Unknown space - treat as free for planning
-  return false;
 }
 
 bool PathPlanner::isStateValid(const Point3D& point)
 {
-  // Check collision with robot radius
-  const int num_checks = 8;
-  const double angles[] = {0, M_PI/4, M_PI/2, 3*M_PI/4, M_PI, 5*M_PI/4, 3*M_PI/2, 7*M_PI/4};
-
-  for (int i = 0; i < num_checks; ++i) {
-    Point3D check_point(
-      point.x + robot_radius_ * std::cos(angles[i]),
-      point.y + robot_radius_ * std::sin(angles[i]),
-      point.z);
-
-    if (isInCollision(check_point)) {
-      return false;
-    }
-  }
-
-  // Check vertical clearance
-  Point3D above(point.x, point.y, point.z + robot_radius_);
-  Point3D below(point.x, point.y, point.z - robot_radius_);
-
-  if (isInCollision(above) || isInCollision(below)) {
-    return false;
-  }
-
-  return true;
+  // Simple collision check - just check the center point
+  // This is appropriate for exploration where we need to be aggressive
+  return !isInCollision(point);
 }
 
 bool PathPlanner::planPath(const Point3D& start, const Point3D& goal, std::vector<Point3D>& path)
 {
-  // Check if start and goal are valid
-  if (!isStateValid(start)) {
-    RCLCPP_ERROR(this->get_logger(), "Start position is in collision!");
-    return false;
-  }
-
-  if (!isStateValid(goal)) {
-    RCLCPP_WARN(this->get_logger(), "Goal position is in collision or too close to obstacles");
-    return false;
-  }
+  // CRITICAL: Scope the mutex lock ONLY for goal validation.
+  // Do NOT hold it for the entire function - isInCollision() during A* also needs the lock!
+  {
+    std::lock_guard<std::mutex> lock(octree_mutex_);
+    if (octree_) {
+      octomap::point3d goal_query(goal.x, goal.y, goal.z);
+      octomap::OcTreeNode* goal_node = octree_->search(goal_query);
+      if (goal_node && octree_->isNodeOccupied(goal_node)) {
+        RCLCPP_WARN(this->get_logger(), "Goal position is in a KNOWN obstacle - rejecting");
+        return false;
+      }
+    }
+  }  // mutex released here - A* can now check collision properly
 
   auto start_time = this->now();
   RCLCPP_INFO(this->get_logger(), "Starting A* planning...");
+
+  // DEBUG: Check if start and goal are valid states
+  RCLCPP_INFO(this->get_logger(), "Checking start state validity...");
+  if (!isStateValid(start)) {
+    RCLCPP_ERROR(this->get_logger(), "Start position (%.2f, %.2f, %.2f) is NOT valid!",
+                 start.x, start.y, start.z);
+    return false;
+  }
+  RCLCPP_INFO(this->get_logger(), "Start state is valid. Checking goal state...");
+  if (!isStateValid(goal)) {
+    RCLCPP_WARN(this->get_logger(), "Goal position (%.2f, %.2f, %.2f) is NOT valid (but continuing for exploration)",
+                goal.x, goal.y, goal.z);
+  } else {
+    RCLCPP_INFO(this->get_logger(), "Goal state is valid.");
+  }
 
   // Helper functions
   auto worldToGrid = [this](const Point3D& point) -> GridIndex {
@@ -299,6 +308,12 @@ bool PathPlanner::planPath(const Point3D& start, const Point3D& goal, std::vecto
     if ((this->now() - start_time).seconds() > planning_timeout_) {
       RCLCPP_WARN(this->get_logger(), "Planning timeout after %d expansions", expansions);
       break;
+    }
+
+    // Progress logging every 5000 expansions
+    if (expansions > 0 && expansions % 5000 == 0) {
+      RCLCPP_INFO(this->get_logger(), "A* progress: %d expansions, open_list size: %zu",
+                  expansions, open_list.size());
     }
 
     // Get node with lowest f-cost

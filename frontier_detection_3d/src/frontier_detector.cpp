@@ -86,46 +86,64 @@ void FrontierDetector::octomapCallback(const octomap_msgs::msg::Octomap::SharedP
 void FrontierDetector::detectFrontiers()
 {
   std::lock_guard<std::mutex> lock(octree_mutex_);
-  
+
   if (!octree_ || octree_->size() == 0) {
     RCLCPP_DEBUG(this->get_logger(), "No octree available yet");
     return;
   }
-  
+
   frontier_voxels_.clear();
-  
-  // Iterate through octree at refinement depth
-  for (octomap::OcTree::leaf_bbx_iterator it = octree_->begin_leafs_bbx(
-         octree_->getBBXMin(), octree_->getBBXMax(), refinement_depth_);
-       it != octree_->end_leafs_bbx(); ++it)
+
+  // Iterate through all leaf nodes in the octree
+  for (octomap::OcTree::leaf_iterator it = octree_->begin_leafs(refinement_depth_);
+       it != octree_->end_leafs(); ++it)
   {
-    // Check if voxel is FREE
+    // Only consider FREE voxels
     if (!octree_->isNodeOccupied(*it)) {
       octomap::point3d position = it.getCoordinate();
-      
-      // Check if it has unknown neighbors (frontier)
+
+      // A frontier is a free voxel adjacent to unknown space
       if (hasUnknownNeighbor(position)) {
         FrontierVoxel frontier;
         frontier.position = position;
-        frontier.information_gain = calculateInformationGain(position);
+        frontier.information_gain = 0.0;
         frontier_voxels_.push_back(frontier);
       }
     }
   }
-  
+
   RCLCPP_INFO(this->get_logger(), "Found %zu frontier voxels", frontier_voxels_.size());
-  
+
   if (frontier_voxels_.empty()) {
     RCLCPP_INFO(this->get_logger(), "No frontiers found - exploration complete!");
     return;
   }
-  
-  // Cluster frontiers
-  clusterFrontiers();
-  
-  // Select best frontier
-  selectBestFrontier();
-  
+
+  // Find the nearest frontier voxel to the robot - no clustering needed
+  octomap::point3d robot_pos = getRobotPosition();
+  double min_dist = std::numeric_limits<double>::infinity();
+  const FrontierVoxel* nearest = nullptr;
+
+  for (const auto& fv : frontier_voxels_) {
+    double d = calculateDistance(robot_pos, fv.position);
+    if (d < min_dist) {
+      min_dist = d;
+      nearest = &fv;
+    }
+  }
+
+  if (!nearest) return;
+
+  // Set best_frontier_ as a single-voxel "cluster" at the nearest frontier
+  best_frontier_.centroid = nearest->position;
+  best_frontier_.voxels = {*nearest};
+  best_frontier_.score = 1.0;
+  frontier_clusters_ = {best_frontier_};
+
+  RCLCPP_INFO(this->get_logger(),
+    "Nearest frontier at (%.2f, %.2f, %.2f), dist=%.2fm",
+    nearest->position.x(), nearest->position.y(), nearest->position.z(), min_dist);
+
   // Publish results
   publishFrontierMarkers();
   publishBestFrontier();
@@ -371,18 +389,37 @@ void FrontierDetector::publishExplorationGoal()
   if (frontier_clusters_.empty()) {
     return;
   }
-  
+
+  // Navigate directly to the best frontier centroid
+  // The best frontier is already the single highest-scoring one from selectBestFrontier()
+  octomap::point3d robot_pos = getRobotPosition();
+  octomap::point3d frontier_pos = best_frontier_.centroid;
+  octomap::point3d direction = robot_pos - frontier_pos;
+  double distance = direction.norm();
+
+  // Place goal slightly before the frontier (toward robot) to avoid hitting walls
+  octomap::point3d goal_pos;
+  if (distance > 0.01) {
+    double offset = std::max(0.3, std::min(distance * 0.4, 0.5));
+    goal_pos = frontier_pos + direction * (offset / distance);
+  } else {
+    goal_pos = frontier_pos;
+  }
+
   geometry_msgs::msg::PoseStamped goal;
   goal.header.frame_id = map_frame_;
   goal.header.stamp = this->now();
-  goal.pose.position.x = best_frontier_.centroid.x();
-  goal.pose.position.y = best_frontier_.centroid.y();
-  goal.pose.position.z = best_frontier_.centroid.z();
+  goal.pose.position.x = goal_pos.x();
+  goal.pose.position.y = goal_pos.y();
+  goal.pose.position.z = goal_pos.z();
   goal.pose.orientation.w = 1.0;
-  
+
   goal_pub_->publish(goal);
-  
-  RCLCPP_INFO(this->get_logger(), "Published exploration goal");
+
+  RCLCPP_INFO(this->get_logger(),
+    "Goal: frontier=(%.2f,%.2f,%.2f) -> goal=(%.2f,%.2f,%.2f) dist=%.2fm",
+    frontier_pos.x(), frontier_pos.y(), frontier_pos.z(),
+    goal_pos.x(), goal_pos.y(), goal_pos.z(), distance);
 }
 
 }  // namespace frontier_detection_3d

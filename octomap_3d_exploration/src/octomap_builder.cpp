@@ -185,20 +185,27 @@ void OctomapBuilder::pointCloudCallback(const sensor_msgs::msg::PointCloud2::Sha
   {
     std::lock_guard<std::mutex> lock(octree_mutex_);
     octree_->insertPointCloud(octo_cloud, sensor_origin, max_range_);
+
+    // // CRITICAL: Update inner occupancy to propagate changes through tree
+    // // This is needed for the map to persist and accumulate observations
+    // octree_->updateInnerOccupancy();
   }
 
-  RCLCPP_DEBUG(this->get_logger(), 
-    "Inserted %zu/%zu points into octree", 
-    octo_cloud.size(), cloud.size());
+  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 3000,
+    "Inserted %zu pts, octree now has %zu nodes",
+    octo_cloud.size(), octree_->size());
 }
 
 void OctomapBuilder::publishOctomap()
 {
   std::lock_guard<std::mutex> lock(octree_mutex_);
-  
+
   if (octree_->size() == 0) {
     return;
   }
+
+  // Update inner occupancy before publishing (done here at 2 Hz, not on every pointcloud)
+  octree_->updateInnerOccupancy();
 
   auto stamp = this->now();
 
@@ -267,10 +274,12 @@ void OctomapBuilder::publishOccupiedMarkers()
     }
   }
 
-  if (!marker.points.empty()) {
-    marker_array.markers.push_back(marker);
-    occupied_marker_pub_->publish(marker_array);
-  }
+  // Always publish (even if empty) so RViz clears stale markers
+  marker_array.markers.push_back(marker);
+  occupied_marker_pub_->publish(marker_array);
+
+  RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+    "Octomap: %zu occupied voxels, %zu total nodes", marker.points.size(), octree_->size());
 }
 
 void OctomapBuilder::publishFreeMarkers()
@@ -308,10 +317,9 @@ void OctomapBuilder::publishFreeMarkers()
     }
   }
 
-  if (!marker.points.empty()) {
-    marker_array.markers.push_back(marker);
-    free_marker_pub_->publish(marker_array);
-  }
+  // Always publish (even if empty) so RViz clears stale markers
+  marker_array.markers.push_back(marker);
+  free_marker_pub_->publish(marker_array);
 }
 
 void OctomapBuilder::publishUnknownMarkers()
