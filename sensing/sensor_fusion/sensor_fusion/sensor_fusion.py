@@ -5,6 +5,8 @@ from sensor_msgs.msg import Image, PointCloud2
 from std_msgs.msg import Header
 import numpy as np
 from sensor_msgs_py import point_cloud2
+import cv2
+from cv_bridge import CvBridge
 
 
 class MinimalSubscriber(Node):
@@ -15,8 +17,12 @@ class MinimalSubscriber(Node):
         # underwater image 
         self.uwimgage = self.create_subscription(
             Image,
-            '/Oceansim/rgb', # fix topic callback
+            '/Oceansim/rgb',
             self.uw_image_callback,
+            10)
+        self.edge_pub = self.create_publisher(
+            Image,
+            '/Oceansim/edges',
             10)
 
 
@@ -34,18 +40,22 @@ class MinimalSubscriber(Node):
         )
         self.intens_thresh = 50
         self.image = None
+        self.bridge = CvBridge()
 
     def uw_image_callback(self, msg):
         self.image = msg
 
-        grayscale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        cvimv = self.bridge.imgmsg_to_cv2(self.image, desired_encoding='passthrough')
+        grayscale = cv2.cvtColor(cvimv, cv2.COLOR_RGBA2GRAY)
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        enhanced  clahe.apply(gray)
+        enhanced  = clahe.apply(grayscale)
 
-        canny_Edge = cv2.Canny(enhanced, (5,5), 1.5)
+        canny_Edge = cv2.Canny(enhanced, 100,200)
 
         #TODO cont. here
-
+        print("running")
+        rosimg = self.bridge.cv2_to_imgmsg(canny_Edge)
+        self.edge_pub.publish(rosimg)
         # segment image
 
     def listener_callback(self, msg):
@@ -66,9 +76,8 @@ class MinimalSubscriber(Node):
 
         header = Header()
         header.stamp = msg.header.stamp
-        header.frame_id = "Oceansim"
+        header.frame_id = "sonar"
         points = point_cloud2.create_cloud_xyz32(header,np.column_stack((x,y,z)))
-
         self.pub.publish(points)
 
 
