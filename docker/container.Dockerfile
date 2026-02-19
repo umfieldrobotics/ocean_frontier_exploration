@@ -3,7 +3,7 @@
 
 # Base image argument - typically an NVIDIA CUDA image for GPU support
 #ARG BASE_IMAGE=nvidia/cuda:13.1.0-runtime-ubuntu24.04 
-ARG BASE_IMAGE=nvidia/cuda:13.1.0-runtime-ubuntu22.04 
+ARG BASE_IMAGE=nvidia/cuda:13.1.0-runtime-ubuntu24.04
 #nvcr.io/nvidia/isaac-sim:5.1.0
 FROM ${BASE_IMAGE}
 
@@ -96,14 +96,14 @@ RUN sudo apt-get install -y \
 RUN cd isaacsim/_build/linux-x86_64/release && mkdir extsUser && cd extsUser \
     && git clone https://github.com/umfieldrobotics/OceanSim.git \
     && cd OceanSim \
-    && pip install gdown \
+    && pip install --break-system-packages gdown \
     && export PATH="$HOME/.local/bin:$PATH" \
     && mkdir OceanSim_assets \
    && gdown --folder 1qg4-Y_GMiybnLc1BFjx0DsWfR0AgeZzA -O OceanSim_assets \
    #&& cd isaacsim/_build/linux-x86_64/release/extsUser \
    && python3 config/register_asset_path.py OceanSim_assets/
 #ARG CACHEBUST=1
-COPY assets /home/${USER_NAME}/isaacsim/_build/linux-x86_64/release/extsUser/OceanSim/OceanSim_assets
+#COPY assets /home/${USER_NAME}/isaacsim/_build/linux-x86_64/release/extsUser/OceanSim/OceanSim_assets
 #ARG CACHEBUST=1
 # RUN mkdir OceanSim_assets \
 #     && cd /home/${USER_NAME}/isaacsim/_build/linux-x86_64/release/extsUser/OceanSim/ \
@@ -120,9 +120,10 @@ RUN sudo apt install software-properties-common \
     && sudo dpkg -i /tmp/ros2-apt-source.deb \
     && sudo apt update \
     && sudo apt upgrade -y \
-    && sudo apt install ros-humble-desktop -y \
+    && sudo apt install ros-jazzy-desktop -y \
     && sudo apt install ros-dev-tools -y \
-    && echo 'source /opt/ros/humble/setup.bash' >> ~/.bashrc
+    && echo 'source /opt/ros/jazzy/setup.bash' >> ~/.bashrc \
+    && pip install --break-system-packages opencv-python
 
 RUN ls
 ARG CACHEBUST=1
