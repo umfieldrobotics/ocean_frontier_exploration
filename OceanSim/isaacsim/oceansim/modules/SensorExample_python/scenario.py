@@ -62,6 +62,8 @@ class MHL_Sensor_Example_Scenario():
             self._DVL.initialize(og_node=self.omni_ros._dvl_node)
             self._DVL_reading = [0.0, 0.0, 0.0]
         if self._baro is not None:
+            self._baro.initialize(og_node=self.omni_ros._baro_node)
+
             self._baro_reading = 101325.0 # atmospheric pressure (Pa)
         # if self._zed is not None:
         #     self._zed.initalize()
@@ -185,7 +187,7 @@ class MHL_Sensor_Example_Scenario():
         if self._DVL is not None:
             self._DVL_reading = self._DVL.read()
         if self._baro is not None:
-            self._baro_reading = self._baro.get_pressure()
+            self._baro_reading = float(self._baro.read()) # og was self._baro.get_pressure()
         # if self._zed is not None:
         #     self._zed.render()
 

@@ -377,11 +377,14 @@ class UIBuilder():
             self._DVL.add_debug_lines()
             
         if self._use_baro:
-            from isaacsim.oceansim.sensors.BarometerSensor import BarometerSensor
+            from isaacsim.oceansim.sensors.BarometerSensor_ROS import BarometerSensor_ROS
 
-            self._baro = BarometerSensor(prim_path=robot_prim_path + '/Baro',
-                                        water_surface_z=self._water_surface)
-        # if self._use_zed:
+            self._baro = BarometerSensor_ROS(
+                prim_path=robot_prim_path + '/Baro',
+                water_surface_z=self._water_surface,
+                frame_id="baro",
+            )
+            # if self._use_zed:
         #     from isaacsim.simulation_app.utils.
             
             
