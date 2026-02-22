@@ -360,8 +360,8 @@ class UIBuilder():
             self._cam.set_focal_length(0.1 * self._cam_focal_length)
             self._cam.set_clipping_range(0.1, 100)
             # MOVED TO SCENERIO, MUST RUN AFTER initialize function call Call publishers
-            # approx_freq = 30
-            # #info has type mismatch when calling read_camera_info Stage.GetPrimAtPath(Stage, NoneType) did not match C++ signature:
+            approx_freq = 30
+            #info has type mismatch when calling read_camera_info Stage.GetPrimAtPath(Stage, NoneType) did not match C++ signature:
             # ros2_helpers.publish_camera_info( self._cam, approx_freq)
             # ros2_helpers.publish_rgb( self._cam, approx_freq)
             # ros2_helpers.publish_depth( self._cam, approx_freq)

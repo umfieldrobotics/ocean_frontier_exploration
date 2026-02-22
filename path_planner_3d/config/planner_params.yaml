@@ -1,0 +1,13 @@
+path_planner:
+  ros__parameters:
+    # Coordinate frames
+    map_frame: "UW_camera_world"
+    robot_frame: "UW_camera"           # FIXED: actual robot frame from TF tree
+
+    # A* Planning parameters
+    planning_timeout: 5.0              # seconds - maximum time for planning
+    grid_resolution: 0.2               # FIXED: match octomap resolution (was 0.3)
+    robot_radius: 0.5                  # Balance between safety and not being stuck (was 0.8, too large)
+    max_planning_range: 50.0           # meters - maximum distance to plan
+    heuristic_weight: 1.0              # A* heuristic weight (1.0 = optimal A*, >1.0 = weighted A* for faster planning)
+    max_expansions: 60000              # maximum node expansions before giving up

@@ -20,6 +20,7 @@ class MHL_Sensor_Example_Scenario():
         #self._zed = None
 
         self._ctrl_mode = None
+        self._cmd_vel_controller = None
 
         self._running_scenario = False
         self._time = 0.0
@@ -43,8 +44,8 @@ class MHL_Sensor_Example_Scenario():
         if self._sonar is not None:
             approx_freq = 30
             self._sonar.sonar_initialize(include_unlabelled=True,og_node=self.omni_ros._sonar_node)
-            #ros2_helpers.publish_camera_info( self._sonar, approx_freq)
-            #ros2_helpers.publish_rgb( self._cam, approx_freq)
+            ros2_helpers.publish_camera_info( self._sonar, approx_freq)
+            # ros2_helpers.publish_rgb( self._cam, approx_freq)
             ros2_helpers.publish_depth( self._sonar, approx_freq)
             ros2_helpers.publish_pointcloud_from_depth( self._sonar, approx_freq)
             ros2_helpers.publish_camera_tf( self._sonar)
@@ -53,7 +54,7 @@ class MHL_Sensor_Example_Scenario():
             approx_freq = 30
             # #info has type mismatch when calling read_camera_info Stage.GetPrimAtPath(Stage, NoneType) did not match C++ signature:
             ros2_helpers.publish_camera_info( self._cam, approx_freq)
-            #ros2_helpers.publish_rgb( self._cam, approx_freq)
+            ros2_helpers.publish_rgb( self._cam, approx_freq)
             ros2_helpers.publish_depth( self._cam, approx_freq)
             ros2_helpers.publish_pointcloud_from_depth( self._cam, approx_freq)
             ros2_helpers.publish_camera_tf( self._cam)
@@ -65,7 +66,12 @@ class MHL_Sensor_Example_Scenario():
         # if self._zed is not None:
         #     self._zed.initalize()
         
-        
+        # Setup cmd_vel ROS2 subscriber (works with any control mode except Manual)
+        if ctrl_mode != "Manual control":
+            from ...utils.cmd_vel_subscriber import CmdVelController
+            robot_path = get_prim_path(self._rob)
+            self._cmd_vel_controller = CmdVelController(robot_prim_path=robot_path)
+
         # Apply the physx force schema if manual control
         if ctrl_mode == "Manual control":
             from ...utils.keyboard_cmd import keyboard_cmd
@@ -143,6 +149,11 @@ class MHL_Sensor_Example_Scenario():
         if self._cam is not None:
             self._cam.close()
 
+        # Clear cmd_vel controller
+        if self._cmd_vel_controller is not None:
+            self._cmd_vel_controller.cleanup()
+            self._cmd_vel_controller = None
+
         # clear the keyboard subscription
         if self._ctrl_mode=="Manual control":
             self._force_cmd.cleanup()
@@ -160,10 +171,10 @@ class MHL_Sensor_Example_Scenario():
 
     def update_scenario(self, step: float):
 
-        
+
         if not self._running_scenario:
             return
-        
+
         self._time += step
         if self._imu is not None:
             self._imu.read()
@@ -177,6 +188,10 @@ class MHL_Sensor_Example_Scenario():
             self._baro_reading = self._baro.get_pressure()
         # if self._zed is not None:
         #     self._zed.render()
+
+        # Update cmd_vel controller if active
+        if self._cmd_vel_controller is not None:
+            self._cmd_vel_controller.update(self._rob)
 
         if self._ctrl_mode=="Manual control":
             force_cmd = Gf.Vec3f(*self._force_cmd._base_command)

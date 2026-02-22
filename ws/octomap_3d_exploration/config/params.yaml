@@ -4,8 +4,8 @@ octomap_builder:
     resolution: 0.2           # Voxel size in meters (underwater: larger voxels)
     max_range: 20.0           # Maximum sensor range (meters)
     min_range: 0.5            # Minimum sensor range (meters)
-    frame_id: "UW_camera_world"  # ← CHANGE THIS to match your camera frame
-    robot_frame: "base_link"  # Robot base frame
+    frame_id: "UW_camera_world"  # Map frame
+    robot_frame: "UW_camera"  # Robot base frame (FIXED: was base_link)
     
     # Update rates
     publish_rate: 2.0         # Hz - how often to publish map
