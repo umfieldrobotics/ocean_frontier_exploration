@@ -1,5 +1,4 @@
 import numpy as np
-import carb
 import omni.graph.core as og
 import omni.timeline
 
@@ -41,28 +40,11 @@ class DVLSensor_ROS(DVLsensor):
         )
 
         self._og_node = og_node
-        self._warned_missing_attrs = False
         self._last_payload = None
         self._default_velocity_covariance = [0.0] * 9
-        self._resolved_attr_map = None
-
-        self._attr_aliases = {
-            "timestamp": ["inputs:timestamp", "inputs:stamp"],
-            "time": ["inputs:time"],
-            "vx": ["inputs:vx"],
-            "vy": ["inputs:vy"],
-            "vz": ["inputs:vz"],
-            "velocity_covariance": ["inputs:velocity_covariance"],
-            "fom": ["inputs:fom"],
-            "altitude": ["inputs:altitude"],
-            "velocity_valid": ["inputs:velocity_valid"],
-            "status": ["inputs:status"],
-        }
 
     def initialize(self, og_node=None):
         self._og_node = og_node
-        self._resolved_attr_map = None
-        self._warned_missing_attrs = False
 
     def _is_velocity_valid(self) -> bool:
         beam_hits = self.get_beam_hit()
@@ -111,25 +93,7 @@ class DVLSensor_ROS(DVLsensor):
         }
         return payload
 
-    def _resolve_attr_map(self):
-        if self._og_node is None:
-            return None
-
-        resolved = {}
-        for key, candidates in self._attr_aliases.items():
-            selected = None
-            for attr_name in candidates:
-                if self._og_node.get_attribute_exists(attr_name):
-                    selected = attr_name
-                    break
-            if selected is None:
-                return None
-            resolved[key] = selected
-        return resolved
-
     def _set_og_attr(self, attr_name: str, value):
-        if not self._og_node.get_attribute_exists(attr_name):
-            raise RuntimeError(f"Missing OmniGraph attribute: {attr_name}")
         attr = self._og_node.get_attribute(attr_name)
         og.Controller.attribute(attr).set(value)
 
@@ -137,32 +101,16 @@ class DVLSensor_ROS(DVLsensor):
         if self._og_node is None:
             return
 
-        if self._resolved_attr_map is None:
-            self._resolved_attr_map = self._resolve_attr_map()
-            if self._resolved_attr_map is None:
-                if not self._warned_missing_attrs:
-                    self._warned_missing_attrs = True
-                    carb.log_warn(
-                        f"[{self._name}] DVL ROS publish skipped: ROS2Publisher dynamic inputs are not ready. "
-                        "Check messagePackage/messageSubfolder/messageName configuration."
-                    )
-                return
-
-        try:
-            self._set_og_attr(self._resolved_attr_map["timestamp"], payload["timestamp"])
-            self._set_og_attr(self._resolved_attr_map["time"], payload["time"])
-            self._set_og_attr(self._resolved_attr_map["vx"], payload["vx"])
-            self._set_og_attr(self._resolved_attr_map["vy"], payload["vy"])
-            self._set_og_attr(self._resolved_attr_map["vz"], payload["vz"])
-            self._set_og_attr(self._resolved_attr_map["velocity_covariance"], payload["velocity_covariance"])
-            self._set_og_attr(self._resolved_attr_map["fom"], payload["fom"])
-            self._set_og_attr(self._resolved_attr_map["altitude"], payload["altitude"])
-            self._set_og_attr(self._resolved_attr_map["velocity_valid"], payload["velocity_valid"])
-            self._set_og_attr(self._resolved_attr_map["status"], payload["status"])
-        except Exception as exc:
-            if not self._warned_missing_attrs:
-                self._warned_missing_attrs = True
-                carb.log_warn(f"[{self._name}] DVL ROS publish skipped: {exc}")
+        self._set_og_attr("inputs:timestamp", payload["timestamp"])
+        self._set_og_attr("inputs:time", payload["time"])
+        self._set_og_attr("inputs:vx", payload["vx"])
+        self._set_og_attr("inputs:vy", payload["vy"])
+        self._set_og_attr("inputs:vz", payload["vz"])
+        self._set_og_attr("inputs:velocity_covariance", payload["velocity_covariance"])
+        self._set_og_attr("inputs:fom", payload["fom"])
+        self._set_og_attr("inputs:altitude", payload["altitude"])
+        self._set_og_attr("inputs:velocity_valid", payload["velocity_valid"])
+        self._set_og_attr("inputs:status", payload["status"])
 
     def read(self):
         payload = self._build_payload()
