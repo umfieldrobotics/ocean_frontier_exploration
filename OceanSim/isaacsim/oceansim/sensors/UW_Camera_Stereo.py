@@ -205,7 +205,7 @@ class UW_Camera_Stereo(Camera):
                 og.Controller.attribute(self._og_node.get_attribute("inputs:width")).set(self._res[0])
                 og.Controller.attribute(self._og_node.get_attribute("inputs:height")).set(self._res[1])
                 og.Controller.attribute(self._og_node.get_attribute("inputs:data")).set(self._uw_frame)
-
+                #og.Controller.attribute(self._og_node.get_attribute("inputs:timestamp")).set((sim_time))
             if self._viewport:
                 self._provider.set_bytes_data_from_gpu(uw_image.ptr, self.get_resolution())
             if self._writing:

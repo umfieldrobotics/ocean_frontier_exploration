@@ -43,7 +43,7 @@ class MHL_Sensor_Example_Scenario():
         if self._sonar is not None:
             approx_freq = 30
             self._sonar.sonar_initialize(include_unlabelled=True,og_node=self.omni_ros._sonar_node)
-            ros2_helpers.publish_camera_info( self._sonar, approx_freq)
+            #ros2_helpers.publish_camera_info( self._sonar, approx_freq)
             #ros2_helpers.publish_rgb( self._cam, approx_freq)
             ros2_helpers.publish_depth( self._sonar, approx_freq)
             ros2_helpers.publish_pointcloud_from_depth( self._sonar, approx_freq)
@@ -52,12 +52,13 @@ class MHL_Sensor_Example_Scenario():
             self._cam.initialize(og_node=self.omni_ros._rgb_node)
             approx_freq = 30
             # #info has type mismatch when calling read_camera_info Stage.GetPrimAtPath(Stage, NoneType) did not match C++ signature:
-            # ros2_helpers.publish_camera_info( self._cam, approx_freq)
-            # #ros2_helpers.publish_rgb( self._cam, approx_freq)
-            # ros2_helpers.publish_depth( self._cam, approx_freq)
-            # ros2_helpers.publish_pointcloud_from_depth( self._cam, approx_freq)
-            # ros2_helpers.publish_camera_tf( self._cam)
+            ros2_helpers.publish_camera_info( self._cam, approx_freq)
+            #ros2_helpers.publish_rgb( self._cam, approx_freq)
+            ros2_helpers.publish_depth( self._cam, approx_freq)
+            ros2_helpers.publish_pointcloud_from_depth( self._cam, approx_freq)
+            ros2_helpers.publish_camera_tf( self._cam)
         if self._DVL is not None:
+            self._DVL.initialize(og_node=self.omni_ros._dvl_node)
             self._DVL_reading = [0.0, 0.0, 0.0]
         if self._baro is not None:
             self._baro_reading = 101325.0 # atmospheric pressure (Pa)
@@ -171,7 +172,7 @@ class MHL_Sensor_Example_Scenario():
         if self._cam is not None:
             self._cam.render()
         if self._DVL is not None:
-            self._DVL_reading = self._DVL.get_linear_vel()
+            self._DVL_reading = self._DVL.read()
         if self._baro is not None:
             self._baro_reading = self._baro.get_pressure()
         # if self._zed is not None:
@@ -199,5 +200,3 @@ class MHL_Sensor_Example_Scenario():
         
 
         
-
-

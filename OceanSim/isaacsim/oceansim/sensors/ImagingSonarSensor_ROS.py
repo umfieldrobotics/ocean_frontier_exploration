@@ -553,6 +553,10 @@ class ImagingSonarSensor_ROS(Camera):
             - Used internally for viewport display
             - Image dimensions match the sonar's polar binning resolution
         """
+        #TEMP
+        print(self.sonar_map.shape)
+
+
         self.sonar_image.zero_()
         wp.launch(
             dim=self.sonar_map.shape,
@@ -564,6 +568,8 @@ class ImagingSonarSensor_ROS(Camera):
                 self.sonar_image
             ]
         )
+        print(self.sonar_image.shape)
+
         return self.sonar_image
     
 

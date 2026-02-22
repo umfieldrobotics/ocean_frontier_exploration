@@ -354,6 +354,7 @@ class UIBuilder():
             from isaacsim.oceansim.sensors.UW_Camera_Stereo import UW_Camera_Stereo
 
             self._cam = UW_Camera_Stereo(prim_path=robot_prim_path + '/UW_camera',
+                                    #orientation=euler_angles_to_quat(np.array([0.0, 45, 0.0]),  degrees=True),
                                     resolution=[1920,1080],
                                     translation=self._cam_trans)
             self._cam.set_focal_length(0.1 * self._cam_focal_length)
@@ -361,16 +362,16 @@ class UIBuilder():
             # MOVED TO SCENERIO, MUST RUN AFTER initialize function call Call publishers
             # approx_freq = 30
             # #info has type mismatch when calling read_camera_info Stage.GetPrimAtPath(Stage, NoneType) did not match C++ signature:
-            # #ros2_helpers.publish_camera_info( self._cam, approx_freq)
+            # ros2_helpers.publish_camera_info( self._cam, approx_freq)
             # ros2_helpers.publish_rgb( self._cam, approx_freq)
-            # #ros2_helpers.publish_depth( self._cam, approx_freq)
+            # ros2_helpers.publish_depth( self._cam, approx_freq)
             # ros2_helpers.publish_pointcloud_from_depth( self._cam, approx_freq)
             # ros2_helpers.publish_camera_tf( self._cam)
             
         if self._use_DVL:
-            from isaacsim.oceansim.sensors.DVLsensor import DVLsensor
+            from isaacsim.oceansim.sensors.DVLSensor_ROS import DVLSensor_ROS
 
-            self._DVL = DVLsensor(max_range=10)
+            self._DVL = DVLSensor_ROS(max_range=10)
             self._DVL.attachDVL(rigid_body_path=robot_prim_path,
                                 translation=self._DVL_trans)
             self._DVL.add_debug_lines()

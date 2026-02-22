@@ -50,7 +50,6 @@ def publish_camera_info(camera: Camera, freq):
     queue_size = 1
     node_namespace = ""
     frame_id = camera.prim_path.split("/")[-1] # This matches what the TF tree is publishing.
-
     writer = rep.writers.get("ROS2PublishCameraInfo")
     camera_info, _ = read_camera_info(render_product_path=render_product)
     writer.initialize(
@@ -254,11 +253,21 @@ def publish_camera_tf(camera: Camera):
 
 #Omnigraph setup
 class OmniHandler():
-    def __init__(self):
+    def __init__(
+        self,
+        name: str = "Oceansim",
+        dvl_message_package: str = "msgs",
+        dvl_message_subfolder: str = "msg",
+        dvl_message_name: str = "Dvl",
+    ):
         self._rgb_node = None
         self._sonar_node = None
         self._imu_node = None
-        self._name = "Oceansim"
+        self._dvl_node = None
+        self._name = name
+        self._dvl_message_package = dvl_message_package
+        self._dvl_message_subfolder = dvl_message_subfolder
+        self._dvl_message_name = dvl_message_name
         self._setup_ros_graph()
         
 
@@ -272,20 +281,22 @@ class OmniHandler():
                 if pd := omni.usd.get_context().get_stage().GetPrimAtPath(graph_path):
                     omni.kit.commands.execute("DeletePrims", paths=[graph_path])
                 # https://docs.isaacsim.omniverse.nvidia.com/5.1.0/py/source/extensions/isaacsim.ros2.bridge/docs/ogn/OgnROS2PublishImage.html
-                (self._og_graph, [rgb_pub_node, sonar_pub_node, imu_pub_node, _], _, _) = og.Controller.edit(
+                (self._og_graph, [rgb_pub_node, sonar_pub_node, imu_pub_node, dvl_pub_node, _], _, _) = og.Controller.edit(
                     {"graph_path": graph_path, "evaluator_name": "execution"},
                     {
                         keys.CREATE_NODES: [
                             ("uw_rgb_publisher", "isaacsim.ros2.bridge.ROS2PublishImage"),
                             ("multibeam_sonar_publisher", "isaacsim.ros2.bridge.ROS2PublishImage"),
                             ("imu_publisher", "isaacsim.ros2.bridge.ROS2PublishImu"),
+                            ("dvl_publisher", "isaacsim.ros2.bridge.ROS2Publisher"),
                             ("on_tick", "omni.graph.action.OnTick") ,
                             #("imu_read", "isaacsim.sensors.physics.IsaacReadIMU") 
                         ],
                         keys.CONNECT: [
                             ("on_tick.outputs:tick", "uw_rgb_publisher.inputs:execIn"),
                             ("on_tick.outputs:tick", "multibeam_sonar_publisher.inputs:execIn"),
-                            ("on_tick.outputs:tick", "imu_publisher.inputs:execIn")
+                            ("on_tick.outputs:tick", "imu_publisher.inputs:execIn"),
+                            ("on_tick.outputs:tick", "dvl_publisher.inputs:execIn"),
                         #    ("imu_read.outputs:angularVelocity", "imu_publisher.inputs:angularVelocity"),
                         #    ("imu_read.outputs:linearAcceleration", "imu_publisher.inputs:linearAcceleration"),
                         #    ("imu_read.outputs:orientation", "imu_publisher.inputs:orientation"),
@@ -300,13 +311,20 @@ class OmniHandler():
                             ("multibeam_sonar_publisher.inputs:encoding", "rgba8"), #switch back to rgb8 if not working
 
                             ("imu_publisher.inputs:topicName", f"{self._name}/imu"),
-                            ("imu_publisher.inputs:frameId", self._name),                           
+                            ("imu_publisher.inputs:frameId", self._name),
+
+                            ("dvl_publisher.inputs:topicName", f"{self._name}/dvl"),
+                            ("dvl_publisher.inputs:queueSize", 10),
+                            ("dvl_publisher.inputs:messagePackage", self._dvl_message_package),
+                            ("dvl_publisher.inputs:messageSubfolder", self._dvl_message_subfolder),
+                            ("dvl_publisher.inputs:messageName", self._dvl_message_name),
                         ]
                     }
                 )
                 self._rgb_node = rgb_pub_node
                 self._sonar_node = sonar_pub_node
                 self._imu_node = imu_pub_node
+                self._dvl_node = dvl_pub_node
                 print(f"[{self._name}] Internal ROS 2 Bridge Graph initialized at {graph_path}")
                 
             except Exception as e:
