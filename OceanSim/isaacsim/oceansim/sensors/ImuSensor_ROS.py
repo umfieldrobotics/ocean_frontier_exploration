@@ -7,6 +7,7 @@ from isaacsim.sensors.physics import IMUSensor
 from isaacsim.storage.native import get_assets_root_path
 from isaacsim.sensors.physics import IMUSensor
 import omni.graph.core as og 
+import omni.timeline
 
 """
 Oceansim IMU
@@ -33,8 +34,10 @@ class ImuSensor_ROS(IMUSensor):
         # imu api https://docs.isaacsim.omniverse.nvidia.com/5.1.0/py/source/extensions/isaacsim.sensors.physics/docs/index.html#isaacsim.sensors.physics.IMUSensor
         #see graph node attributes: https://docs.isaacsim.omniverse.nvidia.com/5.1.0/py/source/extensions/isaacsim.ros2.bridge/docs/ogn/OgnROS2PublishImu.html
         imu_data = self.get_current_frame()
+        sim_time = float(omni.timeline.get_timeline_interface().get_current_time())
+        if self._og_node.get_attribute_exists("inputs:timeStamp"):
+            og.Controller.attribute(self._og_node.get_attribute("inputs:timeStamp")).set(sim_time)
         og.Controller.attribute(self._og_node.get_attribute("inputs:angularVelocity")).set(imu_data["ang_vel"])
         og.Controller.attribute(self._og_node.get_attribute("inputs:linearAcceleration")).set(imu_data["lin_acc"])
         og.Controller.attribute(self._og_node.get_attribute("inputs:orientation")).set(imu_data["orientation"])
-
 
